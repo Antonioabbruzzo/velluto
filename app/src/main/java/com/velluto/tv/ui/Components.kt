@@ -66,12 +66,16 @@ data class RowItem(
 fun Modifier.optionalFocusRequester(fr: FocusRequester?): Modifier =
     if (fr != null) this.focusRequester(fr) else this
 
-/** Chiede il focus appena l'elemento è pronto (le liste lazy compongono con un frame di ritardo). */
+/**
+ * Chiede il focus appena l'elemento è pronto (le liste lazy compongono con un frame di ritardo).
+ * La richiesta viene ripetuta qualche volta: al primo frame l'elemento può non essere ancora focalizzabile.
+ */
 @Composable
 fun RequestFocus(fr: FocusRequester, key: Any? = Unit) {
     LaunchedEffect(key) {
-        repeat(20) {
-            if (runCatching { fr.requestFocus() }.isSuccess) return@LaunchedEffect
+        var granted = 0
+        repeat(30) {
+            if (runCatching { fr.requestFocus() }.isSuccess && ++granted >= 4) return@LaunchedEffect
             delay(50)
         }
     }
@@ -124,12 +128,13 @@ fun PosterCard(
         if (item.label != null) {
             Box(
                 Modifier
-                    .align(Alignment.BottomStart)
-                    .fillMaxWidth()
-                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))))
-                    .padding(start = 6.dp, end = 6.dp, top = 14.dp, bottom = if (item.progress != null) 8.dp else 4.dp),
+                    .align(Alignment.TopStart)
+                    .padding(6.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color.Black.copy(alpha = 0.75f))
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
             ) {
-                Text(item.label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                Text(item.label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
             }
         }
         if (item.progress != null) {

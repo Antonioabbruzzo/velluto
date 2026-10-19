@@ -44,7 +44,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -100,6 +104,7 @@ fun HomeScreen(vm: AppViewModel, catalog: Catalog) {
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun SideMenu(
     current: Section,
@@ -108,6 +113,7 @@ private fun SideMenu(
     onSelect: (Section) -> Unit,
 ) {
     val width by animateDpAsState(if (expanded) 210.dp else 64.dp, label = "menuWidth")
+    val requesters = remember { menu.associate { it.section to FocusRequester() } }
     Column(
         Modifier
             .width(width)
@@ -116,17 +122,32 @@ private fun SideMenu(
                 if (expanded) Color.Black.copy(alpha = 0.95f) else Palette.Background
             )
             .onFocusChanged { onFocusChange(it.hasFocus) }
+            // Entrando nel menu il cursore va sulla sezione in cui ti trovi, non sulla voce più vicina.
+            .focusProperties { enter = { requesters[current] ?: FocusRequester.Default } }
+            .focusGroup()
             .padding(vertical = 24.dp),
         verticalArrangement = Arrangement.Center,
     ) {
         menu.forEach { entry ->
-            MenuItem(entry, selected = entry.section == current, expanded = expanded, onClick = { onSelect(entry.section) })
+            MenuItem(
+                entry,
+                selected = entry.section == current,
+                expanded = expanded,
+                focusRequester = requesters.getValue(entry.section),
+                onClick = { onSelect(entry.section) },
+            )
         }
     }
 }
 
 @Composable
-private fun MenuItem(entry: MenuEntry, selected: Boolean, expanded: Boolean, onClick: () -> Unit) {
+private fun MenuItem(
+    entry: MenuEntry,
+    selected: Boolean,
+    expanded: Boolean,
+    focusRequester: FocusRequester,
+    onClick: () -> Unit,
+) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val color = when {
@@ -138,6 +159,7 @@ private fun MenuItem(entry: MenuEntry, selected: Boolean, expanded: Boolean, onC
         Modifier
             .padding(horizontal = 10.dp, vertical = 3.dp)
             .fillMaxWidth()
+            .focusRequester(focusRequester)
             .clip(RoundedCornerShape(6.dp))
             .background(if (focused) Color.White else Color.Transparent)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
