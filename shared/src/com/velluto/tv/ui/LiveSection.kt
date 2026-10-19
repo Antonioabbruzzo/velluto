@@ -2,6 +2,7 @@ package com.velluto.tv.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Box
@@ -37,7 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
+import com.velluto.tv.platform.RemoteImage
 import com.velluto.tv.data.Catalog
 import com.velluto.tv.data.EpgEntry
 import com.velluto.tv.data.LiveChannel
@@ -83,7 +84,7 @@ fun LiveSection(vm: AppViewModel, catalog: Catalog) {
                         selectedCat = c.id
                         vm.lastFocus["live-cat"] = c.id
                     },
-                    onClick = {},
+                    onClick = { selectedCat = c.id },
                     focusRequester = if (c.id == selectedCat) catFr else null,
                 )
             }
@@ -104,8 +105,8 @@ fun LiveSection(vm: AppViewModel, catalog: Catalog) {
             val ch = focused
             if (ch != null) {
                 if (ch.icon.isNotBlank()) {
-                    AsyncImage(
-                        model = ch.icon,
+                    RemoteImage(
+                        url = ch.icon,
                         contentDescription = null,
                         contentScale = ContentScale.Fit,
                         modifier = Modifier.size(width = 160.dp, height = 90.dp),
@@ -161,7 +162,7 @@ fun ListEntry(
     focusRequester: FocusRequester? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
-    val isFocused by interaction.collectIsFocusedAsState()
+    val isFocused = interaction.isHighlighted()
     Box(
         Modifier
             .fillMaxWidth()
@@ -176,6 +177,7 @@ fun ListEntry(
                     else -> Color.Transparent
                 }
             )
+            .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 10.dp),
     ) {
@@ -193,7 +195,8 @@ fun ListEntry(
 @Composable
 private fun ChannelEntry(channel: LiveChannel, onFocused: () -> Unit, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
-    val isFocused by interaction.collectIsFocusedAsState()
+    val isFocused = interaction.isHighlighted()
+    LaunchedEffect(isFocused) { if (isFocused) onFocused() }
     Row(
         Modifier
             .fillMaxWidth()
@@ -201,14 +204,15 @@ private fun ChannelEntry(channel: LiveChannel, onFocused: () -> Unit, onClick: (
             .onFocusChanged { if (it.isFocused) onFocused() }
             .clip(RoundedCornerShape(6.dp))
             .background(if (isFocused) Color.White else Palette.Surface)
+            .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(width = 56.dp, height = 32.dp), contentAlignment = Alignment.Center) {
             if (channel.icon.isNotBlank()) {
-                AsyncImage(
-                    model = channel.icon,
+                RemoteImage(
+                    url = channel.icon,
                     contentDescription = null,
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize(),

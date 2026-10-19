@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -50,8 +51,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil.compose.AsyncImage
+import androidx.compose.runtime.collectAsState
+import com.velluto.tv.platform.RemoteImage
 import com.velluto.tv.data.Episode
 import com.velluto.tv.data.LibraryState
 import com.velluto.tv.data.Movie
@@ -63,8 +64,8 @@ import com.velluto.tv.data.SeriesDetail
 @Composable
 private fun DetailBackground(image: String) {
     Box(Modifier.fillMaxSize()) {
-        AsyncImage(
-            model = image,
+        RemoteImage(
+            url = image,
             contentDescription = null,
             contentScale = ContentScale.Crop,
             alignment = Alignment.TopCenter,
@@ -103,7 +104,7 @@ private fun resumeTarget(series: Series, detail: SeriesDetail, lib: LibraryState
 
 @Composable
 fun SeriesDetailScreen(vm: AppViewModel, series: Series, preloaded: SeriesDetail? = null) {
-    val lib by vm.library.state.collectAsStateWithLifecycle()
+    val lib by vm.library.state.collectAsState()
     var detail by remember { mutableStateOf(preloaded) }
     var error by remember { mutableStateOf<String?>(null) }
     var attempt by remember { mutableStateOf(0) }
@@ -237,7 +238,7 @@ private fun SeriesBody(vm: AppViewModel, series: Series, d: SeriesDetail, lib: L
 @Composable
 private fun SeasonChip(text: String, selected: Boolean, onSelect: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
-    val focused by interaction.collectIsFocusedAsState()
+    val focused = interaction.isHighlighted()
     // Come su Netflix: basta spostarsi sulla stagione per vederne gli episodi.
     LaunchedEffect(focused) { if (focused && !selected) onSelect() }
     Box(
@@ -251,6 +252,7 @@ private fun SeasonChip(text: String, selected: Boolean, onSelect: () -> Unit) {
                 }
             )
             .then(if (!focused && selected) Modifier.border(1.dp, Color.White, RoundedCornerShape(16.dp)) else Modifier)
+            .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = onSelect)
             .padding(horizontal = 16.dp, vertical = 6.dp),
     ) {
@@ -266,7 +268,7 @@ private fun SeasonChip(text: String, selected: Boolean, onSelect: () -> Unit) {
 @Composable
 private fun EpisodeCard(ep: Episode, fallbackImage: String, progress: Progress?, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
-    val focused by interaction.collectIsFocusedAsState()
+    val focused = interaction.isHighlighted()
     val scale by animateFloatAsState(if (focused) 1.08f else 1f, label = "epScale")
     val shape = RoundedCornerShape(6.dp)
     Column(
@@ -274,6 +276,7 @@ private fun EpisodeCard(ep: Episode, fallbackImage: String, progress: Progress?,
             .width(250.dp)
             .zIndex(if (focused) 1f else 0f)
             .graphicsLayer { scaleX = scale; scaleY = scale }
+            .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),
     ) {
         Box(
@@ -284,8 +287,8 @@ private fun EpisodeCard(ep: Episode, fallbackImage: String, progress: Progress?,
                 .background(Palette.Surface)
                 .then(if (focused) Modifier.border(2.dp, Color.White, shape) else Modifier),
         ) {
-            AsyncImage(
-                model = ep.image.ifBlank { fallbackImage },
+            RemoteImage(
+                url = ep.image.ifBlank { fallbackImage },
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
@@ -318,7 +321,7 @@ private fun EpisodeCard(ep: Episode, fallbackImage: String, progress: Progress?,
 
 @Composable
 fun MovieDetailScreen(vm: AppViewModel, movie: Movie, preloaded: MovieDetail? = null) {
-    val lib by vm.library.state.collectAsStateWithLifecycle()
+    val lib by vm.library.state.collectAsState()
     var detail by remember { mutableStateOf(preloaded) }
     LaunchedEffect(movie.id) {
         if (preloaded != null) return@LaunchedEffect

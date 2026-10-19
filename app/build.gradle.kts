@@ -55,6 +55,12 @@ android {
         compose = true
         buildConfig = true
     }
+    // Codice in comune con la versione Windows (interfaccia, provider, libreria).
+    sourceSets {
+        getByName("main") {
+            java.srcDir("../shared/src")
+        }
+    }
     lint {
         checkReleaseBuilds = false
         abortOnError = false
@@ -87,6 +93,7 @@ dependencies {
 
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.google.code.gson:gson:2.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
     // Screenshot delle schermate su JVM (senza emulatore)

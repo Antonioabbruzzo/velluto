@@ -21,12 +21,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.velluto.tv.BuildConfig
-import com.velluto.tv.data.Updater
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -34,7 +31,6 @@ import java.util.Locale
 
 @Composable
 fun SettingsSection(vm: AppViewModel) {
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var updateStatus by remember { mutableStateOf<String?>(null) }
     var downloading by remember { mutableStateOf(false) }
@@ -46,7 +42,7 @@ fun SettingsSection(vm: AppViewModel) {
         Spacer(Modifier.height(24.dp))
 
         SectionTitle("Aggiornamenti")
-        Info("Versione installata", BuildConfig.VERSION_NAME)
+        Info("Versione installata", vm.platform.versionName)
         Spacer(Modifier.height(10.dp))
         val upd = vm.update
         if (upd != null) {
@@ -60,11 +56,10 @@ fun SettingsSection(vm: AppViewModel) {
                     downloading = true
                     scope.launch {
                         try {
-                            val apk = Updater.download(context, upd) { p ->
+                            vm.platform.updater.install(upd) { p ->
                                 updateStatus = "Download ${(p * 100).toInt()}%"
                             }
                             updateStatus = null
-                            Updater.install(context, apk)
                         } catch (e: Exception) {
                             updateStatus = "Errore: ${e.message}"
                         } finally {

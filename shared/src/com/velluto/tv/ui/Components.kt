@@ -4,8 +4,10 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,7 +51,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import coil.compose.AsyncImage
+import com.velluto.tv.platform.RemoteImage
 import com.velluto.tv.data.Title
 import kotlinx.coroutines.delay
 
@@ -62,6 +64,14 @@ data class RowItem(
     val label: String? = null,
     val onClick: () -> Unit,
 )
+
+/** Evidenziato: selezionato col telecomando/tastiera oppure con il mouse sopra (Windows). */
+@Composable
+fun MutableInteractionSource.isHighlighted(): Boolean {
+    val focused by collectIsFocusedAsState()
+    val hovered by collectIsHoveredAsState()
+    return focused || hovered
+}
 
 fun Modifier.optionalFocusRequester(fr: FocusRequester?): Modifier =
     if (fr != null) this.focusRequester(fr) else this
@@ -91,8 +101,9 @@ fun PosterCard(
     focusRequester: FocusRequester? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
-    val focused by interaction.collectIsFocusedAsState()
+    val focused = interaction.isHighlighted()
     val scale by animateFloatAsState(if (focused) 1.12f else 1f, label = "posterScale")
+    LaunchedEffect(focused) { if (focused) onFocused() }
     val shape = RoundedCornerShape(6.dp)
 
     Box(
@@ -106,6 +117,7 @@ fun PosterCard(
             .clip(shape)
             .background(Palette.Surface)
             .then(if (focused) Modifier.border(2.dp, Color.White, shape) else Modifier)
+            .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = item.onClick),
     ) {
         Text(
@@ -118,8 +130,8 @@ fun PosterCard(
             overflow = TextOverflow.Ellipsis,
         )
         if (item.image.isNotBlank()) {
-            AsyncImage(
-                model = item.image,
+            RemoteImage(
+                url = item.image,
                 contentDescription = item.title.name,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
@@ -190,8 +202,8 @@ fun ContentRow(
 fun Hero(title: Title?, modifier: Modifier = Modifier, extraLine: String? = null) {
     Box(modifier.fillMaxWidth()) {
         if (title != null) {
-            AsyncImage(
-                model = title.backdrop.ifBlank { title.image },
+            RemoteImage(
+                url = title.backdrop.ifBlank { title.image },
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 alignment = Alignment.TopCenter,
@@ -262,7 +274,7 @@ fun TvButton(
     primary: Boolean = false,
 ) {
     val interaction = remember { MutableInteractionSource() }
-    val focused by interaction.collectIsFocusedAsState()
+    val focused = interaction.isHighlighted()
     val bg = when {
         focused -> Color.White
         primary -> Color.White.copy(alpha = 0.25f)
@@ -274,6 +286,7 @@ fun TvButton(
             .optionalFocusRequester(focusRequester)
             .clip(RoundedCornerShape(6.dp))
             .background(bg)
+            .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 18.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,

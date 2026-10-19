@@ -1,13 +1,10 @@
 package com.velluto.tv.ui
 
-import android.app.Application
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
 import com.velluto.tv.data.Account
 import com.velluto.tv.data.AccountInfo
 import com.velluto.tv.data.Catalog
@@ -15,11 +12,14 @@ import com.velluto.tv.data.Episode
 import com.velluto.tv.data.Library
 import com.velluto.tv.data.LiveChannel
 import com.velluto.tv.data.Movie
-import com.velluto.tv.data.Prefs
 import com.velluto.tv.data.Series
-import com.velluto.tv.data.UpdateInfo
-import com.velluto.tv.data.Updater
 import com.velluto.tv.data.XtreamClient
+import com.velluto.tv.platform.PlatformServices
+import com.velluto.tv.platform.UpdateInfo
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 
@@ -48,11 +48,13 @@ sealed interface LoadState {
     data class Error(val message: String) : LoadState
 }
 
-class AppViewModel(app: Application) : AndroidViewModel(app) {
-    private val prefs = Prefs(app)
-    val library = Library(app)
+/** Stato dell'app condiviso tra Fire TV e Windows. */
+class AppViewModel(val platform: PlatformServices) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val accounts = platform.accountStore
+    val library = Library(platform.dataDir)
 
-    var account by mutableStateOf(prefs.loadAccount())
+    var account by mutableStateOf(accounts.load())
         internal set
     var client: XtreamClient? = account?.let { XtreamClient(it) }
         private set
@@ -79,11 +81,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun login(url: String, user: String, pass: String, onError: (String) -> Unit) {
         val acc = Account(XtreamClient.normalizeBaseUrl(url), user.trim(), pass.trim())
         loadState = LoadState.Loading("Accesso in corso…")
-        viewModelScope.launch {
+        scope.launch {
             try {
                 val c = XtreamClient(acc)
                 accountInfo = c.accountInfo()
-                prefs.saveAccount(acc)
+                accounts.save(acc)
                 client = c
                 account = acc
                 loadCatalog()
@@ -96,7 +98,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun logout() {
         // La libreria (preferiti e cronologia) NON viene cancellata.
-        prefs.clearAccount()
+        accounts.clear()
         account = null
         client = null
         catalog = null
@@ -110,7 +112,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun loadCatalog() {
         val c = client ?: return
         loadState = LoadState.Loading("Caricamento del catalogo…")
-        viewModelScope.launch {
+        scope.launch {
             try {
                 if (accountInfo == null) accountInfo = runCatching { c.accountInfo() }.getOrNull()
                 val liveCats = async { c.liveCategories() }
@@ -135,8 +137,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun checkForUpdate(onResult: ((Boolean) -> Unit)? = null) {
-        viewModelScope.launch {
-            update = Updater.check()
+        scope.launch {
+            update = runCatching { platform.updater.check() }.getOrNull()
             onResult?.invoke(update != null)
         }
     }
@@ -153,5 +155,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun replaceTop(screen: Screen) {
         backStack[backStack.lastIndex] = screen
+    }
+
+    fun dispose() {
+        scope.cancel()
     }
 }

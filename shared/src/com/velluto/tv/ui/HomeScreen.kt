@@ -1,11 +1,13 @@
 package com.velluto.tv.ui
 
-import androidx.activity.compose.BackHandler
+import com.velluto.tv.platform.PlatformBackHandler
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,7 +57,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.collectAsState
 import com.velluto.tv.data.Catalog
 import com.velluto.tv.data.LibraryState
 import com.velluto.tv.data.Movie
@@ -77,10 +79,10 @@ private val menu = listOf(
 
 @Composable
 fun HomeScreen(vm: AppViewModel, catalog: Catalog) {
-    val lib by vm.library.state.collectAsStateWithLifecycle()
+    val lib by vm.library.state.collectAsState()
     var menuHasFocus by remember { mutableStateOf(false) }
 
-    BackHandler(enabled = vm.section != Section.HOME) { vm.section = Section.HOME }
+    PlatformBackHandler(enabled = vm.section != Section.HOME) { vm.section = Section.HOME }
 
     Row(Modifier.fillMaxSize()) {
         SideMenu(
@@ -112,15 +114,20 @@ private fun SideMenu(
     onFocusChange: (Boolean) -> Unit,
     onSelect: (Section) -> Unit,
 ) {
-    val width by animateDpAsState(if (expanded) 210.dp else 64.dp, label = "menuWidth")
+    // Il menu si apre col telecomando (focus) o passandoci sopra col mouse.
+    val menuInteraction = remember { MutableInteractionSource() }
+    val hovered by menuInteraction.collectIsHoveredAsState()
+    val open = expanded || hovered
+    val width by animateDpAsState(if (open) 210.dp else 64.dp, label = "menuWidth")
     val requesters = remember { menu.associate { it.section to FocusRequester() } }
     Column(
         Modifier
             .width(width)
             .fillMaxHeight()
             .background(
-                if (expanded) Color.Black.copy(alpha = 0.95f) else Palette.Background
+                if (open) Color.Black.copy(alpha = 0.95f) else Palette.Background
             )
+            .hoverable(menuInteraction)
             .onFocusChanged { onFocusChange(it.hasFocus) }
             // Entrando nel menu il cursore va sulla sezione in cui ti trovi, non sulla voce più vicina.
             .focusProperties { enter = { requesters[current] ?: FocusRequester.Default } }
@@ -132,7 +139,7 @@ private fun SideMenu(
             MenuItem(
                 entry,
                 selected = entry.section == current,
-                expanded = expanded,
+                expanded = open,
                 focusRequester = requesters.getValue(entry.section),
                 onClick = { onSelect(entry.section) },
             )
@@ -149,7 +156,7 @@ private fun MenuItem(
     onClick: () -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
-    val focused by interaction.collectIsFocusedAsState()
+    val focused = interaction.isHighlighted()
     val color = when {
         focused -> Color.Black
         selected -> Color.White
@@ -162,6 +169,7 @@ private fun MenuItem(
             .focusRequester(focusRequester)
             .clip(RoundedCornerShape(6.dp))
             .background(if (focused) Color.White else Color.Transparent)
+            .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,

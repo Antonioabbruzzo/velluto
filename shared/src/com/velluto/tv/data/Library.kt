@@ -1,6 +1,5 @@
 package com.velluto.tv.data
 
-import android.content.Context
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -72,8 +71,8 @@ data class LibraryState(
  * La memoria interna resta intatta quando l'app viene aggiornata (stessa firma),
  * e le chiavi basate sul nome reggono anche se il provider cambia gli ID.
  */
-class Library(context: Context) {
-    private val file = File(context.filesDir, "library.json")
+class Library(dataDir: File) {
+    private val file = File(dataDir.apply { mkdirs() }, "library.json")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val writeLock = Mutex()
     private val _state = MutableStateFlow(load())

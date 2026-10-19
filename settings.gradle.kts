@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Velluto"
 include(":app")
+include(":desktop")

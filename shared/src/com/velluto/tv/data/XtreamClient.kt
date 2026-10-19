@@ -1,12 +1,12 @@
 package com.velluto.tv.data
 
-import android.util.Base64
-import android.util.JsonReader
-import android.util.JsonToken
+import com.google.gson.stream.JsonReader
+import com.google.gson.stream.JsonToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okio.ByteString.Companion.decodeBase64
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -261,11 +261,7 @@ class XtreamClient(val account: Account) {
             else -> ""
         }
 
-        private fun decodeB64(s: String): String = try {
-            String(Base64.decode(s, Base64.DEFAULT), Charsets.UTF_8)
-        } catch (e: IllegalArgumentException) {
-            s
-        }
+        private fun decodeB64(s: String): String = s.trim().decodeBase64()?.utf8() ?: s
 
         private fun parseDate(s: String): Long = try {
             SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).parse(s)?.time ?: 0L

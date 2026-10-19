@@ -97,7 +97,7 @@ class ScreenshotTest {
                 .dispatcher(Dispatchers.Unconfined)
                 .build()
         )
-        vm = AppViewModel(app)
+        vm = AppViewModel(androidServices(app))
         vm.catalog = Fake.catalog
         vm.account = Account("http://mio-provider.example:8080", "mario.rossi", "password")
         vm.accountInfo = AccountInfo(System.currentTimeMillis() + 200L * 24 * 3600 * 1000, "2", "Active")

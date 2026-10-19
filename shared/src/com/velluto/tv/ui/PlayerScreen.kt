@@ -1,8 +1,5 @@
 package com.velluto.tv.ui
 
-import android.view.KeyEvent
-import android.view.ViewGroup
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -38,31 +35,21 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.media3.common.C
-import androidx.media3.common.MediaItem
-import androidx.media3.common.PlaybackException
-import androidx.media3.common.Player
-import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.PlayerView
 import com.velluto.tv.data.EpgEntry
 import com.velluto.tv.data.Progress
-import com.velluto.tv.data.XtreamClient
+import com.velluto.tv.platform.PlatformBackHandler
+import com.velluto.tv.platform.VideoEngine
+import com.velluto.tv.platform.VideoSurface
+import com.velluto.tv.platform.rememberVideoEngine
 import kotlinx.coroutines.delay
 
 private const val NEXT_EPISODE_COUNTDOWN = 10
@@ -70,8 +57,8 @@ private const val NEAR_END_MS = 45_000L
 
 @Composable
 fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
-    val context = LocalContext.current
     val client = vm.client ?: return
+    val engine = rememberVideoEngine()
 
     var req by remember { mutableStateOf(request) }
     var liveExt by remember { mutableStateOf("ts") }
@@ -84,26 +71,16 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
     var overlayTick by remember { mutableIntStateOf(0) }
     var countdown by remember { mutableStateOf<Int?>(null) }
     var epg by remember { mutableStateOf<List<EpgEntry>>(emptyList()) }
+    var loadedAt by remember { mutableLongStateOf(0L) }
     val fr = remember { FocusRequester() }
-
-    val player = remember {
-        val http = DefaultHttpDataSource.Factory()
-            .setUserAgent(XtreamClient.USER_AGENT)
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(20_000)
-            .setReadTimeoutMs(30_000)
-        ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(context, http)))
-            .build()
-    }
 
     fun hasNext(r: PlayRequest) = r is PlayRequest.EpisodeReq && r.index + 1 < r.episodes.size
 
     fun saveProgress(forceFinished: Boolean = false) {
         val r = req
-        val dur = player.duration
-        if (dur == C.TIME_UNSET || dur <= 0) return
-        val pos = if (forceFinished) dur else player.currentPosition
+        val dur = engine.durationMs
+        if (dur <= 0) return
+        val pos = if (forceFinished) dur else engine.positionMs
         if (pos < 10_000) return // aperto per sbaglio: non lo mettiamo in "Continua a guardare"
         val now = System.currentTimeMillis()
         when (r) {
@@ -151,6 +128,11 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
         overlayTick++
     }
 
+    fun togglePlay() {
+        if (engine.isPlaying) engine.pause() else engine.play()
+        showOverlay()
+    }
+
     // Carica il contenuto ogni volta che cambia (episodio successivo, cambio canale, fallback m3u8).
     LaunchedEffect(req, liveExt) {
         errorText = null
@@ -164,9 +146,8 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
                 client.episodeUrl(ep.id, ep.ext) to r.startMs
             }
         }
-        player.setMediaItem(MediaItem.fromUri(url), start)
-        player.prepare()
-        player.playWhenReady = true
+        loadedAt = System.currentTimeMillis()
+        engine.load(url, start)
         showOverlay()
     }
 
@@ -179,44 +160,51 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
         }
     }
 
-    DisposableEffect(player) {
-        val listener = object : Player.Listener {
-            override fun onIsPlayingChanged(playing: Boolean) {
+    DisposableEffect(engine) {
+        engine.listener = object : VideoEngine.Listener {
+            override fun onPlayingChanged(playing: Boolean) {
                 isPlaying = playing
+                // In pausa o in background salva subito. Subito dopo un cambio di episodio/canale
+                // il player può ancora riportare la posizione del contenuto precedente: in quel caso no.
+                if (!playing && System.currentTimeMillis() - loadedAt > 3_000) saveProgress()
             }
 
-            override fun onPlaybackStateChanged(state: Int) {
-                buffering = state == Player.STATE_BUFFERING
-                if (state == Player.STATE_ENDED) {
-                    val r = req
-                    saveProgress(forceFinished = true)
-                    when {
-                        hasNext(r) -> countdown = NEXT_EPISODE_COUNTDOWN
-                        r !is PlayRequest.Live -> vm.back()
-                    }
+            override fun onBufferingChanged(isBuffering: Boolean) {
+                buffering = isBuffering
+            }
+
+            override fun onEnded() {
+                val r = req
+                saveProgress(forceFinished = true)
+                when {
+                    hasNext(r) -> countdown = NEXT_EPISODE_COUNTDOWN
+                    r !is PlayRequest.Live -> vm.back()
                 }
             }
 
-            override fun onPlayerError(error: PlaybackException) {
+            override fun onError(message: String) {
                 if (req is PlayRequest.Live && liveExt == "ts") {
                     liveExt = "m3u8" // alcuni provider accettano solo HLS
                     return
                 }
-                errorText = "Impossibile riprodurre (${error.errorCodeName})"
+                errorText = "Impossibile riprodurre ($message)"
                 overlayVisible = true
             }
         }
-        player.addListener(listener)
-        onDispose { player.removeListener(listener) }
+        onDispose {
+            saveProgress()
+            engine.listener = null
+            engine.release()
+        }
     }
 
     // Salva la posizione ogni 10 secondi e aggiorna la barra di avanzamento.
-    LaunchedEffect(player) {
+    LaunchedEffect(engine) {
         var ticks = 0
         while (true) {
-            positionMs = player.currentPosition
-            durationMs = player.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: 0L
-            if (++ticks % 20 == 0 && player.isPlaying) saveProgress()
+            positionMs = engine.positionMs
+            durationMs = engine.durationMs.coerceAtLeast(0L)
+            if (++ticks % 20 == 0 && engine.isPlaying) saveProgress()
             delay(500)
         }
     }
@@ -236,71 +224,41 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
         }
     }
 
-    // Se l'app va in background (tasto Home), salva e mette in pausa.
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val obs = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) {
-                saveProgress()
-                player.pause()
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(obs)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
-    }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            saveProgress()
-            player.release()
-        }
-    }
-
-    BackHandler {
-        if (countdown != null) {
-            countdown = null
-        }
+    PlatformBackHandler {
+        countdown = null
         vm.back()
     }
 
     val r = req
     val nearEnd = hasNext(r) && countdown == null && durationMs > 0 && durationMs - positionMs in 1..NEAR_END_MS
 
-    fun handleKey(code: Int, repeat: Int): Boolean {
-        val step = if (repeat > 3) 60_000L else if (repeat > 0) 30_000L else 10_000L
-        when (code) {
-            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
-                when {
-                    countdown != null || nearEnd -> goNext()
-                    r is PlayRequest.Live -> showOverlay()
-                    else -> {
-                        if (player.isPlaying) player.pause() else player.play()
-                        showOverlay()
-                    }
-                }
+    // Tenendo premuta una freccia l'avanzamento accelera.
+    var heldKey by remember { mutableStateOf<Key?>(null) }
+    var repeats by remember { mutableIntStateOf(0) }
+
+    fun handleKey(key: Key): Boolean {
+        val step = if (repeats > 3) 60_000L else if (repeats > 0) 30_000L else 10_000L
+        when (key) {
+            Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> when {
+                countdown != null || nearEnd -> goNext()
+                r is PlayRequest.Live -> showOverlay()
+                else -> togglePlay()
             }
-            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE -> {
-                if (player.isPlaying) player.pause() else player.play()
+            Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause, Key.Spacebar -> togglePlay()
+            Key.DirectionLeft, Key.MediaRewind -> {
+                if (r !is PlayRequest.Live) engine.seekTo((engine.positionMs - step).coerceAtLeast(0))
                 showOverlay()
             }
-            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> {
-                if (r !is PlayRequest.Live) player.seekTo((player.currentPosition - step).coerceAtLeast(0))
-                showOverlay()
-            }
-            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
+            Key.DirectionRight, Key.MediaFastForward -> {
                 if (r !is PlayRequest.Live) {
                     val max = if (durationMs > 0) durationMs - 1_000 else Long.MAX_VALUE
-                    player.seekTo((player.currentPosition + step).coerceAtMost(max))
+                    engine.seekTo((engine.positionMs + step).coerceAtMost(max))
                 }
                 showOverlay()
             }
-            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP -> {
-                if (r is PlayRequest.Live) zap(-1) else showOverlay()
-            }
-            KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN -> {
-                if (r is PlayRequest.Live) zap(+1) else showOverlay()
-            }
-            KeyEvent.KEYCODE_MEDIA_NEXT -> goNext()
+            Key.DirectionUp, Key.ChannelUp -> if (r is PlayRequest.Live) zap(-1) else showOverlay()
+            Key.DirectionDown, Key.ChannelDown -> if (r is PlayRequest.Live) zap(+1) else showOverlay()
+            Key.MediaNext -> goNext()
             else -> return false
         }
         return true
@@ -311,25 +269,26 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
             .fillMaxSize()
             .background(Color.Black)
             .onKeyEvent { e ->
-                if (e.type != KeyEventType.KeyDown) false
-                else handleKey(e.nativeKeyEvent.keyCode, e.nativeKeyEvent.repeatCount)
+                when (e.type) {
+                    KeyEventType.KeyDown -> {
+                        if (heldKey == e.key) repeats++ else {
+                            heldKey = e.key
+                            repeats = 0
+                        }
+                        handleKey(e.key)
+                    }
+                    KeyEventType.KeyUp -> {
+                        heldKey = null
+                        repeats = 0
+                        false
+                    }
+                    else -> false
+                }
             }
             .focusRequester(fr)
             .focusable(),
     ) {
-        AndroidView(
-            factory = { ctx ->
-                PlayerView(ctx).apply {
-                    useController = false
-                    keepScreenOn = true
-                    isFocusable = false
-                    descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    this.player = player
-                }
-            },
-            modifier = Modifier.fillMaxSize(),
-        )
+        VideoSurface(engine, Modifier.fillMaxSize())
 
         if (buffering && errorText == null) {
             CircularProgressIndicator(color = Palette.Accent, modifier = Modifier.align(Alignment.Center).size(56.dp))
