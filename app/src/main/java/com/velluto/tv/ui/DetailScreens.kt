@@ -102,13 +102,14 @@ private fun resumeTarget(series: Series, detail: SeriesDetail, lib: LibraryState
 }
 
 @Composable
-fun SeriesDetailScreen(vm: AppViewModel, series: Series) {
+fun SeriesDetailScreen(vm: AppViewModel, series: Series, preloaded: SeriesDetail? = null) {
     val lib by vm.library.state.collectAsStateWithLifecycle()
-    var detail by remember { mutableStateOf<SeriesDetail?>(null) }
+    var detail by remember { mutableStateOf(preloaded) }
     var error by remember { mutableStateOf<String?>(null) }
     var attempt by remember { mutableStateOf(0) }
 
     LaunchedEffect(series.id, attempt) {
+        if (preloaded != null) return@LaunchedEffect
         error = null
         try {
             detail = vm.client?.seriesDetail(series.id)
@@ -316,10 +317,11 @@ private fun EpisodeCard(ep: Episode, fallbackImage: String, progress: Progress?,
 // ======================= FILM =======================
 
 @Composable
-fun MovieDetailScreen(vm: AppViewModel, movie: Movie) {
+fun MovieDetailScreen(vm: AppViewModel, movie: Movie, preloaded: MovieDetail? = null) {
     val lib by vm.library.state.collectAsStateWithLifecycle()
-    var detail by remember { mutableStateOf<MovieDetail?>(null) }
+    var detail by remember { mutableStateOf(preloaded) }
     LaunchedEffect(movie.id) {
+        if (preloaded != null) return@LaunchedEffect
         detail = runCatching { vm.client?.movieDetail(movie.id) }.getOrNull()
     }
     val d = detail

@@ -383,7 +383,7 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
 }
 
 @Composable
-private fun Pill(text: String, modifier: Modifier) {
+internal fun Pill(text: String, modifier: Modifier) {
     Box(
         modifier
             .clip(RoundedCornerShape(6.dp))
@@ -395,7 +395,7 @@ private fun Pill(text: String, modifier: Modifier) {
 }
 
 @Composable
-private fun PlayerOverlay(
+internal fun PlayerOverlay(
     req: PlayRequest,
     isPlaying: Boolean,
     positionMs: Long,

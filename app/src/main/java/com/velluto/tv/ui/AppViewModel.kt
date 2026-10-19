@@ -53,13 +53,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val library = Library(app)
 
     var account by mutableStateOf(prefs.loadAccount())
-        private set
+        internal set
     var client: XtreamClient? = account?.let { XtreamClient(it) }
         private set
     var accountInfo by mutableStateOf<AccountInfo?>(null)
-        private set
+        internal set
     var catalog by mutableStateOf<Catalog?>(null)
-        private set
+        internal set
     var loadState by mutableStateOf<LoadState>(LoadState.Idle)
         private set
     var update by mutableStateOf<UpdateInfo?>(null)
