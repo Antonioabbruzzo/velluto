@@ -1,0 +1,235 @@
+package com.velluto.tv.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.velluto.tv.data.Catalog
+import com.velluto.tv.data.EpgEntry
+import com.velluto.tv.data.LiveChannel
+import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+@Composable
+fun LiveSection(vm: AppViewModel, catalog: Catalog) {
+    val cats = remember(catalog) {
+        catalog.liveCategories.filter { catalog.liveByCategory[it.id].orEmpty().isNotEmpty() }
+    }
+    if (cats.isEmpty()) {
+        EmptyMessage("Nessun canale disponibile")
+        return
+    }
+    var selectedCat by remember {
+        mutableStateOf(vm.lastFocus["live-cat"]?.takeIf { id -> cats.any { it.id == id } } ?: cats.first().id)
+    }
+    val channels = catalog.liveByCategory[selectedCat].orEmpty()
+    var focused by remember { mutableStateOf<LiveChannel?>(null) }
+    var epg by remember { mutableStateOf<List<EpgEntry>>(emptyList()) }
+    val catFr = remember { FocusRequester() }
+
+    LaunchedEffect(focused) {
+        val ch = focused ?: return@LaunchedEffect
+        epg = emptyList()
+        delay(350) // evita richieste mentre scorri velocemente
+        epg = runCatching { vm.client?.shortEpg(ch.id) }.getOrNull().orEmpty()
+    }
+
+    Row(Modifier.fillMaxSize().padding(top = 24.dp)) {
+        LazyColumn(
+            Modifier.width(250.dp).fillMaxHeight(),
+            contentPadding = PaddingValues(vertical = 8.dp, horizontal = 12.dp),
+        ) {
+            itemsIndexed(cats) { _, c ->
+                ListEntry(
+                    text = c.name,
+                    selected = c.id == selectedCat,
+                    onFocused = {
+                        selectedCat = c.id
+                        vm.lastFocus["live-cat"] = c.id
+                    },
+                    onClick = {},
+                    focusRequester = if (c.id == selectedCat) catFr else null,
+                )
+            }
+        }
+        LazyColumn(
+            Modifier.weight(1f).fillMaxHeight(),
+            contentPadding = PaddingValues(vertical = 8.dp, horizontal = 12.dp),
+        ) {
+            itemsIndexed(channels) { index, ch ->
+                ChannelEntry(
+                    channel = ch,
+                    onFocused = { focused = ch },
+                    onClick = { vm.navigate(Screen.Player(PlayRequest.Live(channels, index))) },
+                )
+            }
+        }
+        Column(Modifier.width(300.dp).fillMaxHeight().padding(16.dp)) {
+            val ch = focused
+            if (ch != null) {
+                if (ch.icon.isNotBlank()) {
+                    AsyncImage(
+                        model = ch.icon,
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.size(width = 160.dp, height = 90.dp),
+                    )
+                    Spacer(Modifier.height(12.dp))
+                }
+                Text(ch.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(16.dp))
+                EpgPanel(epg)
+            }
+        }
+    }
+    RequestFocus(catFr, "live")
+}
+
+@Composable
+fun EpgPanel(epg: List<EpgEntry>) {
+    val fmt = remember { SimpleDateFormat("HH:mm", Locale.ITALY) }
+    if (epg.isEmpty()) {
+        Text("Guida TV non disponibile", color = Palette.TextDim, fontSize = 13.sp)
+        return
+    }
+    val now = System.currentTimeMillis()
+    epg.take(3).forEachIndexed { i, e ->
+        val live = now in e.start until e.end
+        Text(
+            if (live) "ORA IN ONDA" else if (i == 0 || epg[i - 1].end <= now) "A SEGUIRE" else "POI",
+            color = if (live) Palette.Accent else Palette.TextDim,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            "${fmt.format(Date(e.start))} – ${fmt.format(Date(e.end))}  ${e.title}",
+            color = Color.White,
+            fontSize = 14.sp,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (live && e.end > e.start) {
+            Spacer(Modifier.height(4.dp))
+            ProgressBar((now - e.start).toFloat() / (e.end - e.start), Modifier.fillMaxWidth())
+        }
+        Spacer(Modifier.height(12.dp))
+    }
+}
+
+@Composable
+fun ListEntry(
+    text: String,
+    selected: Boolean,
+    onFocused: () -> Unit,
+    onClick: () -> Unit,
+    focusRequester: FocusRequester? = null,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val isFocused by interaction.collectIsFocusedAsState()
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp)
+            .optionalFocusRequester(focusRequester)
+            .onFocusChanged { if (it.isFocused) onFocused() }
+            .clip(RoundedCornerShape(6.dp))
+            .background(
+                when {
+                    isFocused -> Color.White
+                    selected -> Palette.SurfaceHigh
+                    else -> Color.Transparent
+                }
+            )
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+    ) {
+        Text(
+            text,
+            color = if (isFocused) Color.Black else if (selected) Color.White else Palette.TextDim,
+            fontSize = 15.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun ChannelEntry(channel: LiveChannel, onFocused: () -> Unit, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val isFocused by interaction.collectIsFocusedAsState()
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp)
+            .onFocusChanged { if (it.isFocused) onFocused() }
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (isFocused) Color.White else Palette.Surface)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(width = 56.dp, height = 32.dp), contentAlignment = Alignment.Center) {
+            if (channel.icon.isNotBlank()) {
+                AsyncImage(
+                    model = channel.icon,
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        if (channel.num > 0) {
+            Text(
+                "${channel.num}",
+                color = if (isFocused) Color.DarkGray else Palette.TextDim,
+                fontSize = 13.sp,
+                modifier = Modifier.width(40.dp),
+            )
+        }
+        Text(
+            channel.name,
+            color = if (isFocused) Color.Black else Color.White,
+            fontSize = 15.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}

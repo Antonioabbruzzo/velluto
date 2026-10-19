@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Banner 320x180 mostrato nel launcher della Fire TV -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <path android:fillColor="#141414" android:pathData="M0,0h320v180h-320z" />
+    <path android:fillColor="#7A0A12" android:pathData="M0,140h320v40h-320z" />
+    <!-- V stilizzata -->
+    <path android:fillColor="#C1121F" android:pathData="M40,40h22l18,62l18,-62h22l-30,90h-20z" />
+    <!-- E -->
+    <path android:fillColor="#FFFFFF" android:pathData="M135,62h30v8h-21v10h18v8h-18v11h21v8h-30z" />
+    <!-- L -->
+    <path android:fillColor="#FFFFFF" android:pathData="M172,62h9v37h20v8h-29z" />
+    <!-- U -->
+    <path android:fillColor="#FFFFFF" android:pathData="M206,62h9v28c0,6 3,9 8,9s8,-3 8,-9v-28h9v28c0,11 -6,17 -17,17s-17,-6 -17,-17z" />
+    <!-- T -->
+    <path android:fillColor="#FFFFFF" android:pathData="M245,62h32v8h-11.5v37h-9v-37h-11.5z" />
+    <!-- O -->
+    <path android:fillColor="#FFFFFF" android:pathData="M298,61c-11,0 -18,9 -18,23.5s7,23.5 18,23.5s18,-9 18,-23.5s-7,-23.5 -18,-23.5zM298,69c5.5,0 9,5.5 9,15.5s-3.5,15.5 -9,15.5s-9,-5.5 -9,-15.5s3.5,-15.5 9,-15.5z" />
+</vector>
