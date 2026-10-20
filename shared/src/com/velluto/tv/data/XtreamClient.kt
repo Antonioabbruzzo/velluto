@@ -106,11 +106,12 @@ class XtreamClient(val account: Account) {
         fun addEpisode(o: JSONObject, seasonHint: Int) {
             val epInfo = o.optJSONObject("info")
             val season = o.optInt("season", seasonHint).takeIf { it > 0 } ?: seasonHint
+            val number = o.optInt("episode_num", 0)
             seasons.getOrPut(season) { mutableListOf() } += Episode(
                 id = o.optString("id"),
                 season = season,
-                number = o.optInt("episode_num", 0),
-                title = o.optString("title"),
+                number = number,
+                title = cleanEpisodeTitle(o.optString("title"), info.optString("name"), number),
                 ext = o.optString("container_extension", "mp4"),
                 plot = epInfo?.optString("plot").orEmpty(),
                 image = epInfo?.optString("movie_image").orEmpty(),

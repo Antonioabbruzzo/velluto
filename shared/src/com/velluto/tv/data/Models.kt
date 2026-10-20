@@ -129,5 +129,28 @@ fun normalizeName(name: String): String {
     return n.lowercase().replace(nonAlnum, " ").trim()
 }
 
+private val episodeCodeRegex = Regex("""(?i)\bS\d{1,2}\s*[ ._:-]?\s*E\d{1,3}\b|\b\d{1,2}x\d{1,3}\b""")
+private const val TITLE_SEPARATORS = " -–—|:._"
+
+/**
+ * Titolo leggibile di un episodio. I provider spesso scrivono "IT - Nome Serie - S01E03 - Titolo":
+ * teniamo solo "Titolo". Se non resta niente usiamo "Episodio N".
+ */
+fun cleanEpisodeTitle(raw: String, seriesName: String, number: Int): String {
+    var t = raw.trim()
+    val code = episodeCodeRegex.find(t)
+    if (code != null) {
+        t = t.substring(code.range.last + 1)
+    } else {
+        val name = seriesName.trim()
+        val i = if (name.isNotEmpty()) t.indexOf(name, ignoreCase = true) else -1
+        if (i in 0..8) t = t.substring(i + name.length)
+    }
+    t = t.trim { it in TITLE_SEPARATORS }
+    // Titoli che sono solo un numero non aggiungono informazioni.
+    if (t.isBlank() || t.all { it.isDigit() }) return "Episodio $number"
+    return t
+}
+
 fun movieKey(name: String) = "movie:" + normalizeName(name)
 fun seriesKey(name: String) = "series:" + normalizeName(name)

@@ -1,6 +1,7 @@
 package com.velluto.tv.ui
 
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -102,21 +103,19 @@ fun PosterCard(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused = interaction.isHighlighted()
-    val scale by animateFloatAsState(if (focused) 1.12f else 1f, label = "posterScale")
     LaunchedEffect(focused) { if (focused) onFocused() }
     val shape = RoundedCornerShape(6.dp)
 
+    // Nessun ingrandimento: la card selezionata ha solo un bordo bianco, così niente si sposta.
     Box(
         modifier
             .width(width)
             .aspectRatio(aspect)
-            .zIndex(if (focused) 1f else 0f)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
             .optionalFocusRequester(focusRequester)
             .onFocusChanged { if (it.isFocused) onFocused() }
             .clip(shape)
             .background(Palette.Surface)
-            .then(if (focused) Modifier.border(2.dp, Color.White, shape) else Modifier)
+            .border(3.dp, if (focused) Color.White else Color.Transparent, shape)
             .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = item.onClick),
     ) {
@@ -197,48 +196,63 @@ fun ContentRow(
     }
 }
 
-/** Banner grande in alto con lo sfondo del titolo selezionato. */
+/**
+ * Banner grande in alto con lo sfondo del titolo selezionato.
+ * Il blocco di testo ha altezza fissa e il cambio di titolo è in dissolvenza:
+ * titoli o trame di lunghezza diversa non fanno "saltare" niente.
+ */
 @Composable
 fun Hero(title: Title?, modifier: Modifier = Modifier, extraLine: String? = null) {
-    Box(modifier.fillMaxWidth()) {
-        if (title != null) {
-            RemoteImage(
-                url = title.backdrop.ifBlank { title.image },
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                alignment = Alignment.TopCenter,
-                modifier = Modifier.fillMaxSize().graphicsLayer { alpha = 0.75f },
-            )
-        }
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.horizontalGradient(
-                    0f to Palette.Background, 0.45f to Palette.Background.copy(alpha = 0.6f), 1f to Color.Transparent,
+    Crossfade(
+        targetState = title to extraLine,
+        animationSpec = tween(durationMillis = 350),
+        modifier = modifier.fillMaxWidth(),
+        label = "hero",
+    ) { (t, extra) ->
+        Box(Modifier.fillMaxSize()) {
+            if (t != null) {
+                RemoteImage(
+                    url = t.backdrop.ifBlank { t.image },
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    alignment = Alignment.TopCenter,
+                    modifier = Modifier.fillMaxSize().graphicsLayer { alpha = 0.75f },
+                )
+            }
+            Box(
+                Modifier.fillMaxSize().background(
+                    Brush.horizontalGradient(
+                        0f to Palette.Background, 0.45f to Palette.Background.copy(alpha = 0.6f), 1f to Color.Transparent,
+                    )
                 )
             )
-        )
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.verticalGradient(0.55f to Color.Transparent, 1f to Palette.Background)
-            )
-        )
-        if (title != null) {
-            Column(Modifier.align(Alignment.BottomStart).padding(start = 40.dp, bottom = 12.dp).fillMaxWidth(0.55f)) {
-                Text(
-                    title.name,
-                    color = Color.White,
-                    fontSize = 30.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    lineHeight = 34.sp,
+            Box(
+                Modifier.fillMaxSize().background(
+                    Brush.verticalGradient(0.55f to Color.Transparent, 1f to Palette.Background)
                 )
-                Spacer(Modifier.height(6.dp))
-                MetaLine(year = title.year, rating = title.rating, extra = extraLine)
-                if (title.plot.isNotBlank()) {
+            )
+            if (t != null) {
+                Column(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 40.dp, bottom = 8.dp)
+                        .fillMaxWidth(0.55f)
+                        .height(132.dp),
+                ) {
+                    Text(
+                        t.name,
+                        color = Color.White,
+                        fontSize = 30.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        lineHeight = 36.sp,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    MetaLine(year = t.year, rating = t.rating, extra = extra)
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        title.plot,
+                        t.plot,
                         color = Palette.Text,
                         fontSize = 13.sp,
                         maxLines = 3,

@@ -122,9 +122,12 @@ fun SeriesDetailScreen(vm: AppViewModel, series: Series, preloaded: SeriesDetail
     val d = detail
     Box(Modifier.fillMaxSize()) {
         DetailBackground(d?.backdrop?.ifBlank { null } ?: series.backdrop.ifBlank { series.image })
-        Column(Modifier.fillMaxSize().padding(top = 48.dp)) {
+        Column(Modifier.fillMaxSize().padding(top = 32.dp)) {
             Column(Modifier.padding(horizontal = 48.dp).fillMaxWidth(0.6f)) {
-                Text(series.name, color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 38.sp)
+                Text(
+                    series.name, color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold,
+                    lineHeight = 34.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
                 Spacer(Modifier.height(8.dp))
                 val seasonsCount = d?.seasons?.size ?: 0
                 MetaLine(
@@ -139,7 +142,7 @@ fun SeriesDetailScreen(vm: AppViewModel, series: Series, preloaded: SeriesDetail
                 Text(
                     d?.plot?.ifBlank { null } ?: series.plot,
                     color = Palette.Text, fontSize = 14.sp, lineHeight = 20.sp,
-                    maxLines = 4, overflow = TextOverflow.Ellipsis,
+                    maxLines = 3, overflow = TextOverflow.Ellipsis,
                 )
                 if (!d?.cast.isNullOrBlank()) {
                     Spacer(Modifier.height(6.dp))
@@ -149,7 +152,7 @@ fun SeriesDetailScreen(vm: AppViewModel, series: Series, preloaded: SeriesDetail
                     )
                 }
             }
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(14.dp))
 
             when {
                 error != null -> Column(Modifier.padding(horizontal = 48.dp)) {
@@ -199,7 +202,7 @@ private fun SeriesBody(vm: AppViewModel, series: Series, d: SeriesDetail, lib: L
             icon = if (isFav) Icons.Filled.Check else Icons.Filled.Add,
         )
     }
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(12.dp))
 
     if (seasons.size > 1) {
         LazyRow(
@@ -215,8 +218,8 @@ private fun SeriesBody(vm: AppViewModel, series: Series, d: SeriesDetail, lib: L
 
     val seasonEps = d.seasons[season].orEmpty()
     LazyRow(
-        contentPadding = PaddingValues(horizontal = 48.dp, vertical = 14.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(horizontal = 48.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         items(seasonEps) { ep ->
             val p = lib.progress[Progress.episodeKey(series.key, ep.season, ep.number)]
@@ -265,54 +268,58 @@ private fun SeasonChip(text: String, selected: Boolean, onSelect: () -> Unit) {
     }
 }
 
+/** Miniatura dell'episodio con numero, titolo e durata scritti sopra l'immagine (sempre visibili). */
 @Composable
 private fun EpisodeCard(ep: Episode, fallbackImage: String, progress: Progress?, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val focused = interaction.isHighlighted()
-    val scale by animateFloatAsState(if (focused) 1.08f else 1f, label = "epScale")
     val shape = RoundedCornerShape(6.dp)
-    Column(
+    Box(
         Modifier
-            .width(250.dp)
-            .zIndex(if (focused) 1f else 0f)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .width(240.dp)
+            .aspectRatio(16f / 9f)
+            .clip(shape)
+            .background(Palette.Surface)
+            .border(if (focused) 3.dp else 0.dp, if (focused) Color.White else Color.Transparent, shape)
             .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),
     ) {
+        RemoteImage(
+            url = ep.image.ifBlank { fallbackImage },
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
         Box(
             Modifier
-                .fillMaxWidth()
-                .aspectRatio(16f / 9f)
-                .clip(shape)
-                .background(Palette.Surface)
-                .then(if (focused) Modifier.border(2.dp, Color.White, shape) else Modifier),
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(0.35f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.9f))
+                )
+        )
+        if (progress?.finished == true) {
+            WatchedBadge(Modifier.align(Alignment.TopEnd).padding(6.dp))
+        }
+        Column(
+            Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 10.dp, end = 10.dp, bottom = if (progress != null) 10.dp else 8.dp),
         ) {
-            RemoteImage(
-                url = ep.image.ifBlank { fallbackImage },
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
+            Text(
+                "${ep.number}. ${ep.title}",
+                color = Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 17.sp,
             )
-            if (progress?.finished == true) {
-                WatchedBadge(Modifier.align(Alignment.TopEnd).padding(6.dp))
-            }
-            if (progress != null && !progress.finished && progress.fraction > 0f) {
-                ProgressBar(progress.fraction, Modifier.align(Alignment.BottomCenter).fillMaxWidth())
+            if (ep.durationSecs > 0) {
+                Text("${ep.durationSecs / 60} min", color = Palette.TextDim, fontSize = 11.sp)
             }
         }
-        Spacer(Modifier.height(6.dp))
-        Text(
-            "${ep.number}. ${ep.title.ifBlank { "Episodio ${ep.number}" }}",
-            color = if (focused) Color.White else Palette.Text,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (focused && ep.plot.isNotBlank()) {
-            Text(ep.plot, color = Palette.TextDim, fontSize = 11.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, lineHeight = 14.sp)
-        } else if (ep.durationSecs > 0) {
-            Text("${ep.durationSecs / 60} min", color = Palette.TextDim, fontSize = 11.sp)
+        if (progress != null && !progress.finished && progress.fraction > 0f) {
+            ProgressBar(progress.fraction, Modifier.align(Alignment.BottomCenter).fillMaxWidth())
         }
     }
 }

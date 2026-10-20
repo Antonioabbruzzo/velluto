@@ -26,6 +26,10 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -203,9 +207,22 @@ private fun BrowseSection(vm: AppViewModel, sectionKey: String, rows: List<Brows
     val savedId = vm.lastFocus[sectionKey]
     val allIds = remember(visibleRows) { visibleRows.flatMap { r -> r.items.map { it.id } }.toSet() }
     val focusId = savedId?.takeIf { it in allIds } ?: visibleRows.firstOrNull()?.items?.firstOrNull()?.id
+    var focused by remember { mutableStateOf<RowItem?>(null) }
     var hero by remember { mutableStateOf<RowItem?>(null) }
+    var focusedRow by remember { mutableIntStateOf(-1) }
     val fr = remember { FocusRequester() }
     val listState = rememberLazyListState()
+
+    // Il banner cambia solo quando ti fermi su una card, non a ogni passaggio veloce.
+    LaunchedEffect(focused) {
+        val f = focused ?: return@LaunchedEffect
+        if (hero != null) delay(450)
+        hero = f
+    }
+    // La fila selezionata resta sempre in alto, nella stessa posizione.
+    LaunchedEffect(focusedRow) {
+        if (focusedRow >= 0) listState.animateScrollToItem(focusedRow)
+    }
 
     if (visibleRows.isEmpty()) {
         EmptyMessage("Nessun contenuto disponibile")
@@ -222,14 +239,15 @@ private fun BrowseSection(vm: AppViewModel, sectionKey: String, rows: List<Brows
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(bottom = 40.dp),
+            contentPadding = PaddingValues(bottom = 300.dp),
         ) {
-            items(visibleRows) { row ->
+            itemsIndexed(visibleRows) { rowIndex, row ->
                 ContentRow(
                     title = row.title,
                     items = row.items,
                     onItemFocused = {
-                        hero = it
+                        focused = it
+                        focusedRow = rowIndex
                         vm.lastFocus[sectionKey] = it.id
                     },
                     focusId = focusId,

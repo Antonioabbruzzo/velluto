@@ -45,6 +45,8 @@ import com.velluto.tv.data.Account
 import com.velluto.tv.data.AccountInfo
 import com.velluto.tv.data.Catalog
 import com.velluto.tv.data.Category
+import com.velluto.tv.data.cleanEpisodeTitle
+import com.velluto.tv.ui.PlayerControl
 import com.velluto.tv.data.Episode
 import com.velluto.tv.data.LiveChannel
 import com.velluto.tv.data.Movie
@@ -246,6 +248,14 @@ class ScreenshotTest {
                     durationMs = 2_700_000,
                     epg = emptyList(),
                     error = null,
+                    controls = listOf(
+                        PlayerControl("⏮", "Precedente", true) {},
+                        PlayerControl("«", "10 s", true) {},
+                        PlayerControl("▶", "Riproduci", true) {},
+                        PlayerControl("»", "10 s", true) {},
+                        PlayerControl("⏭", "Successivo", true) {},
+                    ),
+                    selectedControl = 4,
                 )
             }
         }
@@ -361,7 +371,7 @@ private object Fake {
         seasons = (1..3).associateWith { season ->
             (1..8).map { n ->
                 Episode(
-                    id = "$season$n", season = season, number = n, title = episodeTitles[n - 1], ext = "mkv",
+                    id = "$season$n", season = season, number = n, title = cleanEpisodeTitle("IT - ${s.name} - S0${season}E0$n - ${episodeTitles[n - 1]}", s.name, n), ext = "mkv",
                     plot = "Dopo gli eventi della scorsa puntata, una nuova pista rimette tutto in discussione.",
                     image = "fake://ep/${season * 10 + n}", durationSecs = 2700,
                 )
