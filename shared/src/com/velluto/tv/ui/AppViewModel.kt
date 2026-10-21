@@ -77,11 +77,6 @@ class AppViewModel(val platform: PlatformServices) {
     /** Genere aperto dal sottomenu di "Serie TV" o "Film" (sezioni SERIES_GENRE / MOVIES_GENRE). */
     var openGenre by mutableStateOf<GenreEntry?>(null)
 
-    /**
-     * false quando la sezione è stata cambiata restando nel menu (es. OK su "Serie TV" apre il
-     * sottomenu dei generi): in quel caso il contenuto non deve rubare il cursore al menu.
-     */
-    var focusContentOnOpen = true
     val backStack = mutableStateListOf<Screen>(Screen.Home)
 
     /** Ultima locandina selezionata per ogni sezione, per ritrovare il punto quando si torna indietro. */

@@ -123,14 +123,11 @@ fun HomeScreen(vm: AppViewModel, catalog: Catalog) {
             movieGenres = movieGenres,
             expanded = menuHasFocus,
             onFocusChange = { menuHasFocus = it },
-            onSelect = { section ->
-                // OK su Serie TV / Film apre il sottomenu dei generi: il cursore resta nel menu.
-                vm.focusContentOnOpen = section != Section.SERIES && section != Section.MOVIES
-                vm.section = section
-            },
+            // OK su una voce apre la sezione come sempre. I generi compaiono sotto Serie TV / Film
+            // quando riapri il menu mentre sei in quella sezione: sono una scorciatoia facoltativa.
+            onSelect = { section -> vm.section = section },
             onSelectGenre = { genre ->
                 vm.openGenre = genre
-                vm.focusContentOnOpen = true
                 vm.section = if (genre.isSeries) Section.SERIES_GENRE else Section.MOVIES_GENRE
             },
         )
@@ -328,8 +325,6 @@ private fun BrowseSection(vm: AppViewModel, sectionKey: String, rows: List<Brows
     var focusedRow by remember { mutableIntStateOf(-1) }
     val fr = remember { FocusRequester() }
     val listState = rememberLazyListState()
-    // Aperta dal menu con OK su Serie TV / Film: il cursore resta nel menu.
-    val grabFocus = remember(sectionKey) { vm.focusContentOnOpen.also { vm.focusContentOnOpen = true } }
     val hero = rememberHero(vm, focused, visibleRows.firstOrNull()?.items?.firstOrNull())
 
     // La fila selezionata resta sempre in alto, nella stessa posizione.
@@ -371,7 +366,7 @@ private fun BrowseSection(vm: AppViewModel, sectionKey: String, rows: List<Brows
             }
         }
     }
-    if (grabFocus) RequestFocus(fr, sectionKey)
+    RequestFocus(fr, sectionKey)
 }
 
 /** Tutte le serie (o tutti i film) di un genere, in griglia, con il banner e la trama in alto. */
