@@ -38,6 +38,7 @@ class CatalogCache(private val dir: File) {
                         Movie(
                             id = readInt(), name = readStr(), image = readStr(), categoryId = readStr(),
                             rating = readStr(), ext = readStr(), added = readLong(),
+                            backdrop = readStr(), plot = readStr(), year = readStr(),
                         )
                     },
                     seriesCategories = input.readList { Category(readStr(), readStr()) },
@@ -70,6 +71,7 @@ class CatalogCache(private val dir: File) {
             out.writeList(c.movies) {
                 writeInt(it.id); writeStr(it.name); writeStr(it.image); writeStr(it.categoryId)
                 writeStr(it.rating); writeStr(it.ext); writeLong(it.added)
+                writeStr(it.backdrop); writeStr(it.plot); writeStr(it.year)
             }
             out.writeList(c.seriesCategories) { writeStr(it.id); writeStr(it.name) }
             out.writeList(c.series) {
