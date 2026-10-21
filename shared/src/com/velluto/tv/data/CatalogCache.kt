@@ -104,15 +104,15 @@ class CatalogCache(private val dir: File) {
             return String(b, Charsets.UTF_8)
         }
 
-        inline fun <T> DataOutputStream.writeList(list: List<T>, write: DataOutputStream.(T) -> Unit) {
+        inline fun <T> DataOutputStream.writeList(list: List<T>, writeItem: DataOutputStream.(T) -> Unit) {
             writeInt(list.size)
-            list.forEach { write(it) }
+            for (element in list) writeItem(this, element)
         }
 
-        inline fun <T> DataInputStream.readList(read: DataInputStream.() -> T): List<T> {
+        inline fun <T> DataInputStream.readList(readItem: DataInputStream.() -> T): List<T> {
             val n = readInt()
             val out = ArrayList<T>(n)
-            repeat(n) { out.add(read()) }
+            repeat(n) { out.add(readItem(this)) }
             return out
         }
     }
