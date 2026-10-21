@@ -112,7 +112,7 @@ class CatalogCache(private val dir: File) {
         inline fun <T> DataInputStream.readList(read: DataInputStream.() -> T): List<T> {
             val n = readInt()
             val out = ArrayList<T>(n)
-            repeat(n) { out += read() }
+            repeat(n) { out.add(read()) }
             return out
         }
     }
