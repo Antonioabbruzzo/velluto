@@ -294,12 +294,15 @@ class ScreenshotTest {
     }
 
     @Test
-    fun seriesGenresSubmenu() {
+    fun seriesGenrePicker() {
         vm.section = Section.SERIES
         show { HomeScreen(vm, Fake.catalog) }
-        press(Key.DirectionLeft)
+        capture("13a-serie-pulsante-generi")
+        press(Key.DirectionUp) // dalla prima card al pulsante "Generi"
+        capture("13b-serie-generi-selezionato")
+        press(Key.Enter)
         press(Key.DirectionDown, 2)
-        capture("13-sottomenu-generi-serie")
+        capture("13c-elenco-generi")
     }
 
     @Test

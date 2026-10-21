@@ -4,6 +4,8 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -105,8 +107,20 @@ fun HomeScreen(vm: AppViewModel, catalog: Catalog) {
     var menuHasFocus by remember { mutableStateOf(false) }
     val seriesGenres = remember(catalog) { buildGenreEntries(catalog, series = true) }
     val movieGenres = remember(catalog) { buildGenreEntries(catalog, series = false) }
+    // Elenco dei generi aperto a tutto schermo: true = generi delle serie, false = dei film.
+    var genrePicker by remember { mutableStateOf<Boolean?>(null) }
+    // Chiudendo l'elenco con Indietro il cursore torna sul pulsante "Generi".
+    val genresButton = remember { FocusRequester() }
+    var restoreGenresFocus by remember { mutableStateOf(false) }
+    LaunchedEffect(restoreGenresFocus) {
+        if (restoreGenresFocus) {
+            delay(50)
+            runCatching { genresButton.requestFocus() }
+            restoreGenresFocus = false
+        }
+    }
 
-    // Indietro: da un genere torna alla sezione Serie TV/Film, da una sezione torna alla Home.
+    // Indietro: da un genere torna a tutte le serie/film, da una sezione torna alla Home.
     PlatformBackHandler(enabled = vm.section != Section.HOME) {
         vm.section = when (vm.section) {
             Section.SERIES_GENRE -> Section.SERIES
@@ -115,55 +129,178 @@ fun HomeScreen(vm: AppViewModel, catalog: Catalog) {
         }
     }
 
-    Row(Modifier.fillMaxSize()) {
-        SideMenu(
-            current = vm.section,
-            openGenre = vm.openGenre,
-            seriesGenres = seriesGenres,
-            movieGenres = movieGenres,
-            expanded = menuHasFocus,
-            onFocusChange = { menuHasFocus = it },
-            // OK su una voce apre la sezione come sempre. I generi compaiono sotto Serie TV / Film
-            // quando riapri il menu mentre sei in quella sezione: sono una scorciatoia facoltativa.
-            onSelect = { section -> vm.section = section },
-            onSelectGenre = { genre ->
-                vm.openGenre = genre
-                vm.section = if (genre.isSeries) Section.SERIES_GENRE else Section.MOVIES_GENRE
-            },
-        )
-        Box(Modifier.weight(1f).fillMaxHeight()) {
-            when (vm.section) {
-                Section.HOME -> BrowseSection(vm, "home", remember(catalog, lib) { homeRows(vm, catalog, lib) })
-                Section.FOR_YOU -> ForYouSection(vm, catalog, lib)
-                Section.SERIES -> BrowseSection(vm, "series", remember(catalog) { seriesRows(vm, catalog) })
-                Section.MOVIES -> BrowseSection(vm, "movies", remember(catalog) { movieRows(vm, catalog) })
-                Section.SERIES_GENRE, Section.MOVIES_GENRE -> {
-                    val g = vm.openGenre
-                    if (g != null) GenreSection(vm, g) else EmptyMessage("Scegli un genere dal menu")
+    Box(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxSize()) {
+            SideMenu(
+                current = vm.section,
+                expanded = menuHasFocus,
+                onFocusChange = { menuHasFocus = it },
+                onSelect = { section -> vm.section = section },
+            )
+            Box(Modifier.weight(1f).fillMaxHeight()) {
+                when (vm.section) {
+                    Section.HOME -> BrowseSection(vm, "home", remember(catalog, lib) { homeRows(vm, catalog, lib) })
+                    Section.FOR_YOU -> ForYouSection(vm, catalog, lib)
+                    Section.SERIES -> BrowseSection(
+                        vm, "series", remember(catalog) { seriesRows(vm, catalog) },
+                        header = { PageHeader("Serie TV", null, genresButton) { genrePicker = true } },
+                    )
+                    Section.MOVIES -> BrowseSection(
+                        vm, "movies", remember(catalog) { movieRows(vm, catalog) },
+                        header = { PageHeader("Film", null, genresButton) { genrePicker = false } },
+                    )
+                    Section.SERIES_GENRE, Section.MOVIES_GENRE -> {
+                        val g = vm.openGenre
+                        if (g != null) GenreSection(vm, g, genresButton, onChangeGenre = { genrePicker = g.isSeries })
+                        else EmptyMessage("Scegli un genere")
+                    }
+                    Section.MY_LIST -> MyListSection(vm, catalog, lib)
+                    Section.LIVE -> LiveSection(vm, catalog)
+                    Section.SEARCH -> SearchSection(vm, catalog)
+                    Section.SETTINGS -> SettingsSection(vm)
                 }
-                Section.MY_LIST -> MyListSection(vm, catalog, lib)
-                Section.LIVE -> LiveSection(vm, catalog)
-                Section.SEARCH -> SearchSection(vm, catalog)
-                Section.SETTINGS -> SettingsSection(vm)
+                UpdateBanner(vm, Modifier.align(Alignment.TopEnd))
             }
-            UpdateBanner(vm, Modifier.align(Alignment.TopEnd))
+        }
+
+        val pickerSeries = genrePicker
+        if (pickerSeries != null) {
+            val current = vm.openGenre?.takeIf {
+                it.isSeries == pickerSeries && vm.section.menuSection() == (if (pickerSeries) Section.SERIES else Section.MOVIES) &&
+                    (vm.section == Section.SERIES_GENRE || vm.section == Section.MOVIES_GENRE)
+            }
+            GenrePicker(
+                allLabel = if (pickerSeries) "Tutte le serie" else "Tutti i film",
+                genres = if (pickerSeries) seriesGenres else movieGenres,
+                selected = current,
+                onPick = { g ->
+                    genrePicker = null
+                    val target = when {
+                        g == null -> if (pickerSeries) Section.SERIES else Section.MOVIES
+                        g.isSeries -> Section.SERIES_GENRE
+                        else -> Section.MOVIES_GENRE
+                    }
+                    // Se la pagina non cambia (stesso genere) il cursore torna sul pulsante "Generi".
+                    if (target == vm.section && (g == null || g.id == vm.openGenre?.id)) restoreGenresFocus = true
+                    if (g != null) vm.openGenre = g
+                    vm.section = target
+                },
+                onDismiss = {
+                    genrePicker = null
+                    restoreGenresFocus = true
+                },
+            )
         }
     }
 }
 
-// ---------- Menu laterale con sottomenu dei generi ----------
+// ---------- Generi in stile Netflix: pulsante in cima alla pagina + elenco a tutto schermo ----------
+
+/** Titolo della pagina con il pulsante "Generi ▾", in alto a sinistra sopra il banner. */
+@Composable
+private fun PageHeader(title: String, genre: String?, buttonFocus: FocusRequester, onGenres: () -> Unit) {
+    Row(
+        Modifier.padding(start = 40.dp, top = 22.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(title, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+        if (genre != null) {
+            Text("  ›  $genre", color = Palette.Text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        }
+        Spacer(Modifier.width(24.dp))
+        TvButton(text = "Generi  ▾", onClick = onGenres, focusRequester = buttonFocus)
+    }
+}
+
+/** Elenco dei generi a tutto schermo, sopra la pagina scurita. Indietro lo chiude. */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun GenrePicker(
+    allLabel: String,
+    genres: List<GenreEntry>,
+    selected: GenreEntry?,
+    onPick: (GenreEntry?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    PlatformBackHandler(onBack = onDismiss)
+    val selectedIndex = if (selected == null) 0 else genres.indexOfFirst { it.id == selected.id } + 1
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = (selectedIndex - 3).coerceAtLeast(0))
+    val fr = remember { FocusRequester() }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.92f))
+            // Un clic fuori dall'elenco (mouse) lo chiude; i clic non passano alla pagina sotto.
+            .pointerInput(Unit) { detectTapGestures { onDismiss() } },
+    ) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .align(Alignment.Center)
+                .fillMaxHeight()
+                .width(460.dp)
+                // Il cursore resta nell'elenco finché non scegli o premi Indietro.
+                .focusProperties { exit = { FocusRequester.Cancel } }
+                .focusGroup(),
+            contentPadding = PaddingValues(vertical = 90.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            item {
+                PickerItem(
+                    allLabel,
+                    selected = selected == null,
+                    focusRequester = if (selectedIndex == 0) fr else null,
+                    onClick = { onPick(null) },
+                )
+            }
+            itemsIndexed(genres) { i, g ->
+                PickerItem(
+                    g.name,
+                    selected = selected?.id == g.id,
+                    focusRequester = if (selectedIndex == i + 1) fr else null,
+                    onClick = { onPick(g) },
+                )
+            }
+        }
+        Box(Modifier.align(Alignment.TopEnd).padding(28.dp)) {
+            TvButton(text = "✕", onClick = onDismiss)
+        }
+    }
+    RequestFocus(fr, "genre-picker")
+}
+
+@Composable
+private fun PickerItem(text: String, selected: Boolean, focusRequester: FocusRequester?, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused = interaction.isHighlighted()
+    Text(
+        text,
+        modifier = Modifier
+            .optionalFocusRequester(focusRequester)
+            .hoverable(interaction)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(vertical = 10.dp, horizontal = 24.dp),
+        color = when {
+            focused -> Color.White
+            selected -> Palette.Accent
+            else -> Palette.TextDim
+        },
+        fontSize = if (focused) 26.sp else 21.sp,
+        fontWeight = if (focused || selected) FontWeight.Bold else FontWeight.Normal,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
+// ---------- Menu laterale ----------
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun SideMenu(
     current: Section,
-    openGenre: GenreEntry?,
-    seriesGenres: List<GenreEntry>,
-    movieGenres: List<GenreEntry>,
     expanded: Boolean,
     onFocusChange: (Boolean) -> Unit,
     onSelect: (Section) -> Unit,
-    onSelectGenre: (GenreEntry) -> Unit,
 ) {
     // Il menu si apre col telecomando (focus) o passandoci sopra col mouse.
     val menuInteraction = remember { MutableInteractionSource() }
@@ -193,22 +330,6 @@ private fun SideMenu(
                 focusRequester = requesters.getValue(entry.section),
                 onClick = { onSelect(entry.section) },
             )
-            // Sottomenu dei generi, visibile a menu aperto sotto la sezione in cui ti trovi.
-            val genres = when {
-                entry.section == Section.SERIES && parent == Section.SERIES -> seriesGenres
-                entry.section == Section.MOVIES && parent == Section.MOVIES -> movieGenres
-                else -> emptyList()
-            }
-            if (open && genres.isNotEmpty()) {
-                genres.forEach { g ->
-                    GenreMenuItem(
-                        genre = g,
-                        selected = openGenre?.id == g.id && openGenre?.isSeries == g.isSeries &&
-                            (current == Section.SERIES_GENRE || current == Section.MOVIES_GENRE),
-                        onClick = { onSelectGenre(g) },
-                    )
-                }
-            }
         }
     }
 }
@@ -259,42 +380,6 @@ private fun MenuItem(
     }
 }
 
-@Composable
-private fun GenreMenuItem(genre: GenreEntry, selected: Boolean, onClick: () -> Unit) {
-    val interaction = remember { MutableInteractionSource() }
-    val focused = interaction.isHighlighted()
-    Row(
-        Modifier
-            .padding(start = 44.dp, end = 10.dp, top = 1.dp, bottom = 1.dp)
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
-            .background(if (focused) Color.White else Color.Transparent)
-            .hoverable(interaction)
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            genre.name,
-            color = when {
-                focused -> Color.Black
-                selected -> Color.White
-                else -> Palette.TextDim
-            },
-            fontSize = 13.sp,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        Text(
-            "${genre.titles.size}",
-            color = if (focused) Color.DarkGray else Palette.TextDim.copy(alpha = 0.6f),
-            fontSize = 11.sp,
-        )
-    }
-}
-
 // ---------- Sezioni con hero + file di locandine ----------
 
 data class BrowseRow(val title: String, val items: List<RowItem>, val wide: Boolean = false)
@@ -316,7 +401,13 @@ private fun rememberHero(vm: AppViewModel, focused: RowItem?, fallback: RowItem?
 }
 
 @Composable
-private fun BrowseSection(vm: AppViewModel, sectionKey: String, rows: List<BrowseRow>) {
+private fun BrowseSection(
+    vm: AppViewModel,
+    sectionKey: String,
+    rows: List<BrowseRow>,
+    /** Intestazione sopra il banner (es. "Serie TV" + pulsante Generi). */
+    header: (@Composable () -> Unit)? = null,
+) {
     val visibleRows = rows.filter { it.items.isNotEmpty() }
     val savedId = vm.lastFocus[sectionKey]
     val allIds = remember(visibleRows) { visibleRows.flatMap { r -> r.items.map { it.id } }.toSet() }
@@ -338,12 +429,15 @@ private fun BrowseSection(vm: AppViewModel, sectionKey: String, rows: List<Brows
     }
 
     Column(Modifier.fillMaxSize()) {
-        Hero(
-            hero.title,
-            Modifier.height(250.dp),
-            extraLine = hero.label,
-            extraFor = { vm.extras[it.key] },
-        )
+        Box(Modifier.height(250.dp)) {
+            Hero(
+                hero.title,
+                Modifier.fillMaxSize(),
+                extraLine = hero.label,
+                extraFor = { vm.extras[it.key] },
+            )
+            header?.invoke()
+        }
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f),
@@ -371,7 +465,7 @@ private fun BrowseSection(vm: AppViewModel, sectionKey: String, rows: List<Brows
 
 /** Tutte le serie (o tutti i film) di un genere, in griglia, con il banner e la trama in alto. */
 @Composable
-private fun GenreSection(vm: AppViewModel, genre: GenreEntry) {
+private fun GenreSection(vm: AppViewModel, genre: GenreEntry, genresButton: FocusRequester, onChangeGenre: () -> Unit) {
     val sectionKey = "genre-${if (genre.isSeries) "s" else "m"}-${genre.id}"
     val items = remember(genre) {
         genre.titles.mapIndexed { i, t -> RowItem(id = "$sectionKey/$i/${t.id}", title = t, onClick = { openTitle(vm, t) }) }
@@ -387,17 +481,13 @@ private fun GenreSection(vm: AppViewModel, genre: GenreEntry) {
         return
     }
     Column(Modifier.fillMaxSize()) {
-        Hero(hero.title, Modifier.height(230.dp), extraFor = { vm.extras[it.key] })
-        Text(
-            "${if (genre.isSeries) "Serie TV" else "Film"} · ${genre.name}",
-            modifier = Modifier.padding(start = 40.dp, top = 4.dp),
-            color = Color.White,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold,
-        )
+        Box(Modifier.height(250.dp)) {
+            Hero(hero.title, Modifier.fillMaxSize(), extraFor = { vm.extras[it.key] })
+            PageHeader(if (genre.isSeries) "Serie TV" else "Film", genre.name, genresButton, onChangeGenre)
+        }
         Text(
             "${items.size} ${if (genre.isSeries) "serie" else "film"}",
-            modifier = Modifier.padding(start = 40.dp),
+            modifier = Modifier.padding(start = 40.dp, top = 2.dp),
             color = Palette.TextDim,
             fontSize = 12.sp,
         )
