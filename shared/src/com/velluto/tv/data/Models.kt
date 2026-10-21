@@ -44,6 +44,8 @@ data class Series(
     override val year: String,
     override val backdrop: String,
     val lastModified: Long,
+    /** Generi indicati dal provider, es. "Dramma, Mistero" (può essere vuoto). */
+    val genre: String = "",
 ) : Title {
     override val key: String get() = seriesKey(name)
 }
@@ -110,6 +112,14 @@ data class Catalog(
     private val seriesByKey: Map<String, Series> by lazy { series.associateBy { it.key } }
     private val moviesById: Map<Int, Movie> by lazy { movies.associateBy { it.id } }
     private val seriesById: Map<Int, Series> by lazy { series.associateBy { it.id } }
+    private val movieCategoryNames: Map<String, String> by lazy { movieCategories.associate { it.id to it.name } }
+    private val seriesCategoryNames: Map<String, String> by lazy { seriesCategories.associate { it.id to it.name } }
+
+    /** Nome della categoria del provider a cui appartiene il titolo. */
+    fun categoryName(t: Title): String = when (t) {
+        is Movie -> movieCategoryNames[t.categoryId]
+        is Series -> seriesCategoryNames[t.categoryId]
+    }.orEmpty()
 
     /** Ritrova un titolo salvato: prima per nome (stabile), poi per ID. */
     fun resolve(key: String, id: Int): Title? = when {

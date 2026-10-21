@@ -45,7 +45,9 @@ import com.velluto.tv.data.Account
 import com.velluto.tv.data.AccountInfo
 import com.velluto.tv.data.Catalog
 import com.velluto.tv.data.Category
+import com.velluto.tv.data.buildGenreEntries
 import com.velluto.tv.data.cleanEpisodeTitle
+import com.velluto.tv.ui.TitleExtra
 import com.velluto.tv.ui.PlayerControl
 import com.velluto.tv.data.Episode
 import com.velluto.tv.data.LiveChannel
@@ -103,6 +105,10 @@ class ScreenshotTest {
         vm.catalog = Fake.catalog
         vm.account = Account("http://mio-provider.example:8080", "mario.rossi", "password")
         vm.accountInfo = AccountInfo(System.currentTimeMillis() + 200L * 24 * 3600 * 1000, "2", "Active")
+        // Trama dei film "già scaricata" (nell'app vera arriva da get_vod_info quando ti fermi su un film).
+        Fake.movies.forEachIndexed { i, m ->
+            vm.extras[m.key] = TitleExtra(Fake.moviePlot, "${2015 + i % 10}", Fake.movieGenres[i / 10], "1h ${40 + i % 20}m")
+        }
     }
 
     private fun seedLibrary() {
@@ -286,6 +292,49 @@ class ScreenshotTest {
         show { HomeScreen(vm, Fake.catalog) }
         capture("12-impostazioni")
     }
+
+    @Test
+    fun seriesGenresSubmenu() {
+        vm.section = Section.SERIES
+        show { HomeScreen(vm, Fake.catalog) }
+        press(Key.DirectionLeft)
+        press(Key.DirectionDown, 2)
+        capture("13-sottomenu-generi-serie")
+    }
+
+    @Test
+    fun seriesGenreGrid() {
+        vm.openGenre = buildGenreEntries(Fake.catalog, series = true).first { it.name == "Drammi" }
+        vm.section = Section.SERIES_GENRE
+        show { HomeScreen(vm, Fake.catalog) }
+        capture("14-genere-serie")
+    }
+
+    @Test
+    fun moviesGenreGrid() {
+        vm.openGenre = buildGenreEntries(Fake.catalog, series = false).first { it.name == "Azione" }
+        vm.section = Section.MOVIES_GENRE
+        show { HomeScreen(vm, Fake.catalog) }
+        capture("15-genere-film-con-trama")
+    }
+
+    @Test
+    fun forYou() {
+        seedLibrary()
+        vm.section = Section.FOR_YOU
+        show { HomeScreen(vm, Fake.catalog) }
+        // I suggerimenti si calcolano in background: aspettiamo che arrivino.
+        Thread.sleep(1_000)
+        settle()
+        capture("16-per-te")
+    }
+
+    @Test
+    fun moviesSectionWithPlot() {
+        vm.section = Section.MOVIES
+        show { HomeScreen(vm, Fake.catalog) }
+        capture("17-film-con-trama")
+    }
 }
 
 /** Restituisce immagini generate al volo per gli indirizzi "fake://…". */
@@ -328,22 +377,40 @@ private object Fake {
 
     val titles = mutableMapOf<String, String>()
 
+    // Categorie scritte come le scrivono i provider veri, per provare la pulizia dei nomi.
+    private val seriesCats = listOf(
+        Category("sc0", "IT | SERIE TV - DRAMMI"), Category("sc3", "SERIE TV - MISTERO"),
+        Category("sc1", "IT | CRIME"), Category("sc4", "SERIE TV | THRILLER"),
+        Category("sc2", "IT - COMMEDIE"), Category("sc5", "SERIE TV - SITCOM"),
+    )
+    private val movieCats = listOf(
+        Category("mc0", "FILM | AZIONE"), Category("mc3", "FILM - AVVENTURA"),
+        Category("mc1", "IT | THRILLER"), Category("mc4", "FILM | GIALLI"),
+        Category("mc2", "IT | ANIMAZIONE"), Category("mc5", "FILM - FAMIGLIA"),
+    )
+    private val seriesGenres = listOf("Dramma, Mistero", "Crime, Thriller", "Commedia")
+    val movieGenres = listOf("Azione, Avventura", "Thriller, Giallo", "Animazione, Famiglia")
+    val moviePlot = "Un agente in pensione viene richiamato per un'ultima missione: ha solo una notte " +
+        "per salvare la città, e qualcuno nella sua squadra lo sta tradendo."
+
     val series: List<Series> = seriesNames.mapIndexed { i, n ->
         titles["s$i"] = n
         Series(
-            id = 100 + i, name = n, image = "fake://poster/s$i", categoryId = "sc${i / 10}",
+            id = 100 + i, name = n, image = "fake://poster/s$i", categoryId = seriesCats[i / 5].id,
             rating = listOf("8.4", "7.9", "9.1", "7.2", "8.8")[i % 5], plot = plot,
             year = "${2016 + i % 9}", backdrop = "fake://backdrop/$i", lastModified = (1000L - i * 7) % 300,
+            genre = seriesGenres[i / 10],
         )
     }
 
+    // Come dal provider vero: i film arrivano senza trama (la scarica Velluto quando serve).
     val movies: List<Movie> = movieNames.mapIndexed { i, n ->
         titles["m$i"] = n
         Movie(
-            id = 500 + i, name = n, image = "fake://poster/m$i", categoryId = "mc${i / 10}",
+            id = 500 + i, name = n, image = "fake://poster/m$i", categoryId = movieCats[i / 5].id,
             rating = listOf("7.6", "8.2", "6.9", "8.9", "7.4")[i % 5], ext = "mkv",
-            added = (2000L - i * 13) % 500, backdrop = "fake://backdrop/${i + 30}", plot = plot,
-            year = "${2015 + i % 10}",
+            added = (2000L - i * 13) % 500, backdrop = "fake://backdrop/${i + 30}", plot = "",
+            year = "",
         )
     }
 
@@ -355,9 +422,9 @@ private object Fake {
     val catalog = Catalog(
         liveCategories = listOf(Category("lc0", "Generalisti"), Category("lc1", "Cinema e Sport"), Category("lc2", "Informazione")),
         live = live,
-        movieCategories = listOf(Category("mc0", "Azione"), Category("mc1", "Thriller"), Category("mc2", "Animazione")),
+        movieCategories = movieCats,
         movies = movies,
-        seriesCategories = listOf(Category("sc0", "Drammi"), Category("sc1", "Crime"), Category("sc2", "Commedie")),
+        seriesCategories = seriesCats,
         series = series,
     )
 

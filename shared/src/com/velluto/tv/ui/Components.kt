@@ -202,7 +202,13 @@ fun ContentRow(
  * titoli o trame di lunghezza diversa non fanno "saltare" niente.
  */
 @Composable
-fun Hero(title: Title?, modifier: Modifier = Modifier, extraLine: String? = null) {
+fun Hero(
+    title: Title?,
+    modifier: Modifier = Modifier,
+    extraLine: String? = null,
+    /** Trama/genere/durata scaricati a parte, per i titoli che il provider manda senza trama (i film). */
+    extraFor: (Title) -> TitleExtra? = { null },
+) {
     Crossfade(
         targetState = title to extraLine,
         animationSpec = tween(durationMillis = 350),
@@ -232,6 +238,13 @@ fun Hero(title: Title?, modifier: Modifier = Modifier, extraLine: String? = null
                 )
             )
             if (t != null) {
+                val more = extraFor(t)
+                val plot = t.plot.ifBlank { more?.plot.orEmpty() }
+                val meta = listOfNotNull(
+                    extra,
+                    more?.genre?.takeIf { it.isNotBlank() },
+                    more?.duration?.takeIf { it.isNotBlank() },
+                ).joinToString("  ·  ")
                 Column(
                     Modifier
                         .align(Alignment.BottomStart)
@@ -249,10 +262,10 @@ fun Hero(title: Title?, modifier: Modifier = Modifier, extraLine: String? = null
                         lineHeight = 36.sp,
                     )
                     Spacer(Modifier.height(4.dp))
-                    MetaLine(year = t.year, rating = t.rating, extra = extra)
+                    MetaLine(year = t.year.ifBlank { more?.year.orEmpty() }, rating = t.rating, extra = meta)
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        t.plot,
+                        plot,
                         color = Palette.Text,
                         fontSize = 13.sp,
                         maxLines = 3,

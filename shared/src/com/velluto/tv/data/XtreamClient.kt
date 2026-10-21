@@ -93,6 +93,7 @@ class XtreamClient(val account: Account) {
             year = (m["releaseDate"] ?: m["release_date"]).orEmpty().take(4),
             backdrop = m["backdrop_path"].orEmpty(),
             lastModified = m["last_modified"]?.toLongOrNull() ?: 0L,
+            genre = m["genre"].orEmpty(),
         )
     }
 

@@ -9,10 +9,12 @@ import com.velluto.tv.data.Account
 import com.velluto.tv.data.AccountInfo
 import com.velluto.tv.data.Catalog
 import com.velluto.tv.data.Episode
+import com.velluto.tv.data.GenreEntry
 import com.velluto.tv.data.Library
 import com.velluto.tv.data.LiveChannel
 import com.velluto.tv.data.Movie
 import com.velluto.tv.data.Series
+import com.velluto.tv.data.Title
 import com.velluto.tv.data.XtreamClient
 import com.velluto.tv.platform.PlatformServices
 import com.velluto.tv.platform.UpdateInfo
@@ -40,7 +42,10 @@ sealed interface PlayRequest {
     data class EpisodeReq(val series: Series, val episodes: List<Episode>, val index: Int, val startMs: Long) : PlayRequest
 }
 
-enum class Section { SEARCH, HOME, SERIES, MOVIES, LIVE, MY_LIST, SETTINGS }
+enum class Section { SEARCH, HOME, FOR_YOU, SERIES, SERIES_GENRE, MOVIES, MOVIES_GENRE, LIVE, MY_LIST, SETTINGS }
+
+/** Informazioni in più su un titolo (trama, genere, durata) scaricate solo quando servono. */
+data class TitleExtra(val plot: String, val year: String, val genre: String, val duration: String)
 
 sealed interface LoadState {
     data object Idle : LoadState
@@ -68,10 +73,40 @@ class AppViewModel(val platform: PlatformServices) {
         private set
 
     var section by mutableStateOf(Section.HOME)
+
+    /** Genere aperto dal sottomenu di "Serie TV" o "Film" (sezioni SERIES_GENRE / MOVIES_GENRE). */
+    var openGenre by mutableStateOf<GenreEntry?>(null)
+
+    /**
+     * false quando la sezione è stata cambiata restando nel menu (es. OK su "Serie TV" apre il
+     * sottomenu dei generi): in quel caso il contenuto non deve rubare il cursore al menu.
+     */
+    var focusContentOnOpen = true
     val backStack = mutableStateListOf<Screen>(Screen.Home)
 
     /** Ultima locandina selezionata per ogni sezione, per ritrovare il punto quando si torna indietro. */
     val lastFocus = mutableStateMapOf<String, String>()
+
+    /** Trama e dettagli dei titoli già mostrati nel banner (il provider non li manda per i film). */
+    val extras = mutableStateMapOf<String, TitleExtra>()
+    private val extrasLoading = mutableSetOf<String>()
+
+    /** Scarica trama, genere e durata di un titolo, se mancano. Una sola volta per titolo. */
+    fun loadExtra(t: Title) {
+        if (t is Series && t.plot.isNotBlank()) return
+        if (extras.containsKey(t.key) || !extrasLoading.add(t.key)) return
+        val c = client ?: return
+        scope.launch {
+            val extra = runCatching {
+                when (t) {
+                    is Movie -> c.movieDetail(t.id).let { TitleExtra(it.plot, it.year, it.genre, it.duration) }
+                    is Series -> c.seriesDetail(t.id).let { TitleExtra(it.plot, it.year, it.genre, "") }
+                }
+            }.getOrNull()
+            if (extra != null) extras[t.key] = extra
+            extrasLoading.remove(t.key)
+        }
+    }
 
     init {
         if (account != null) loadCatalog()
