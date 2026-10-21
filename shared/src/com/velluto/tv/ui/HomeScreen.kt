@@ -139,16 +139,21 @@ fun HomeScreen(vm: AppViewModel, catalog: Catalog) {
             )
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 when (vm.section) {
-                    Section.HOME -> BrowseSection(vm, "home", remember(catalog, lib) { homeRows(vm, catalog, lib) })
+                    Section.HOME -> rememberRows(catalog, lib) { homeRows(vm, catalog, lib) }
+                        ?.let { BrowseSection(vm, "home", it) } ?: LoadingRows()
                     Section.FOR_YOU -> ForYouSection(vm, catalog, lib)
-                    Section.SERIES -> BrowseSection(
-                        vm, "series", remember(catalog) { seriesRows(vm, catalog) },
-                        header = { PageHeader("Serie TV", null, genresButton) { genrePicker = true } },
-                    )
-                    Section.MOVIES -> BrowseSection(
-                        vm, "movies", remember(catalog) { movieRows(vm, catalog) },
-                        header = { PageHeader("Film", null, genresButton) { genrePicker = false } },
-                    )
+                    Section.SERIES -> rememberRows(catalog) { seriesRows(vm, catalog) }?.let {
+                        BrowseSection(
+                            vm, "series", it,
+                            header = { PageHeader("Serie TV", null, genresButton) { genrePicker = true } },
+                        )
+                    } ?: LoadingRows()
+                    Section.MOVIES -> rememberRows(catalog) { movieRows(vm, catalog) }?.let {
+                        BrowseSection(
+                            vm, "movies", it,
+                            header = { PageHeader("Film", null, genresButton) { genrePicker = false } },
+                        )
+                    } ?: LoadingRows()
                     Section.SERIES_GENRE, Section.MOVIES_GENRE -> {
                         val g = vm.openGenre
                         if (g != null) GenreSection(vm, g, genresButton, onChangeGenre = { genrePicker = g.isSeries })
@@ -160,6 +165,7 @@ fun HomeScreen(vm: AppViewModel, catalog: Catalog) {
                     Section.SETTINGS -> SettingsSection(vm)
                 }
                 UpdateBanner(vm, Modifier.align(Alignment.TopEnd))
+                CatalogStatusBanner(vm, Modifier.align(Alignment.BottomEnd))
             }
         }
 
@@ -384,6 +390,25 @@ private fun MenuItem(
 
 data class BrowseRow(val title: String, val items: List<RowItem>, val wide: Boolean = false)
 
+/**
+ * Calcola le file fuori dal thread dell'interfaccia (con cataloghi da decine di migliaia di titoli
+ * ordinarli richiede tempo). Quando il catalogo si aggiorna restano visibili le file precedenti.
+ */
+@Composable
+private fun rememberRows(vararg keys: Any?, compute: () -> List<BrowseRow>): List<BrowseRow>? {
+    val rows by produceState<List<BrowseRow>?>(null, *keys) {
+        value = withContext(Dispatchers.Default) { compute() }
+    }
+    return rows
+}
+
+@Composable
+private fun LoadingRows() {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator(color = Palette.Accent)
+    }
+}
+
 /** Banner che segue la card selezionata, aggiornato solo quando ti fermi, con la trama caricata se manca. */
 @Composable
 private fun rememberHero(vm: AppViewModel, focused: RowItem?, fallback: RowItem?): RowItem? {
@@ -424,7 +449,10 @@ private fun BrowseSection(
     }
 
     if (visibleRows.isEmpty() || hero == null) {
-        EmptyMessage("Nessun contenuto disponibile")
+        EmptyMessage(
+            if (vm.loadingParts.isNotEmpty()) "Contenuti in arrivo dal provider…\nLa prima volta può richiedere qualche minuto."
+            else "Nessun contenuto disponibile"
+        )
         return
     }
 
@@ -557,9 +585,23 @@ private fun titleItems(vm: AppViewModel, prefix: String, list: List<Title>, limi
         RowItem(id = "$prefix/$i/${t.id}", title = t, onClick = { openTitle(vm, t) })
     }
 
+/**
+ * Un titolo salvato (cronologia o lista) anche se il catalogo non è ancora arrivato:
+ * nome, immagine e ID bastano per mostrarlo e aprirlo.
+ */
+private fun savedTitle(catalog: Catalog, key: String, id: Int, name: String, image: String): Title? =
+    catalog.resolve(key, id) ?: when {
+        key.startsWith("series:") -> Series(
+            id = id, name = name, image = image, categoryId = "", rating = "", plot = "",
+            year = "", backdrop = "", lastModified = 0L,
+        )
+        key.startsWith("movie:") -> Movie(id = id, name = name, image = image, categoryId = "", rating = "", ext = "", added = 0L)
+        else -> null
+    }
+
 private fun continueItems(vm: AppViewModel, catalog: Catalog, lib: LibraryState): List<RowItem> =
     lib.continueWatching.mapNotNull { p: Progress ->
-        val t = catalog.resolve(p.titleKey, p.titleId) ?: return@mapNotNull null
+        val t = savedTitle(catalog, p.titleKey, p.titleId, p.name, p.image) ?: return@mapNotNull null
         val label = if (t is Series) "S${p.season}:E${p.episode}" else null
         val shownProgress = if (p.finished) null else p.fraction
         RowItem(
@@ -573,7 +615,7 @@ private fun continueItems(vm: AppViewModel, catalog: Catalog, lib: LibraryState)
 
 private fun myListItems(vm: AppViewModel, catalog: Catalog, lib: LibraryState): List<RowItem> =
     lib.favorites.values.sortedByDescending { it.addedAt }.mapNotNull { f ->
-        val t = catalog.resolve(f.key, f.id) ?: return@mapNotNull null
+        val t = savedTitle(catalog, f.key, f.id, f.name, f.image) ?: return@mapNotNull null
         RowItem(id = "fav/${f.key}", title = t, onClick = { openTitle(vm, t) })
     }
 
@@ -666,6 +708,27 @@ fun TitleGrid(header: String, items: List<RowItem>, vm: AppViewModel, sectionKey
 fun EmptyMessage(text: String) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Text(text, color = Palette.TextDim, fontSize = 18.sp, lineHeight = 26.sp)
+    }
+}
+
+/** Scritta in basso a destra mentre il catalogo arriva in sottofondo (es. "Film 45.000…"). */
+@Composable
+private fun CatalogStatusBanner(vm: AppViewModel, modifier: Modifier) {
+    val text = vm.catalogStatus ?: return
+    val loading = vm.loadingParts.isNotEmpty()
+    Row(
+        modifier
+            .padding(16.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color.Black.copy(alpha = 0.8f))
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (loading) {
+            CircularProgressIndicator(color = Palette.Accent, strokeWidth = 2.dp, modifier = Modifier.size(14.dp))
+            Spacer(Modifier.width(10.dp))
+        }
+        Text(text, color = if (loading) Palette.Text else Palette.Accent, fontSize = 12.sp)
     }
 }
 

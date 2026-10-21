@@ -45,6 +45,7 @@ import com.velluto.tv.data.Account
 import com.velluto.tv.data.AccountInfo
 import com.velluto.tv.data.Catalog
 import com.velluto.tv.data.Category
+import com.velluto.tv.data.CatalogCache
 import com.velluto.tv.data.buildGenreEntries
 import com.velluto.tv.data.cleanEpisodeTitle
 import com.velluto.tv.ui.TitleExtra
@@ -145,6 +146,9 @@ class ScreenshotTest {
                 Box(Modifier.fillMaxSize().background(Palette.Background)) { content() }
             }
         }
+        settle()
+        // Le file della home si calcolano in background: diamo il tempo di arrivare e di prendere il focus.
+        Thread.sleep(500)
         settle()
     }
 
@@ -330,6 +334,28 @@ class ScreenshotTest {
         Thread.sleep(1_000)
         settle()
         capture("16-per-te")
+    }
+
+    @Test
+    fun catalogCacheRoundTrip() {
+        val cache = CatalogCache(File(app.cacheDir, "cache-test"))
+        val acc = Account("http://x.example", "u", "p")
+        cache.save(acc, Fake.catalog)
+        val back = cache.load(acc)
+        org.junit.Assert.assertEquals(Fake.catalog.movies, back?.movies)
+        org.junit.Assert.assertEquals(Fake.catalog.series, back?.series)
+        org.junit.Assert.assertEquals(Fake.catalog.live, back?.live)
+        org.junit.Assert.assertEquals(Fake.catalog.movieCategories, back?.movieCategories)
+    }
+
+    @Test
+    fun homeWhileLoading() {
+        seedLibrary()
+        // Primo avvio: categorie, canali e serie arrivati, film ancora in caricamento.
+        vm.catalog = Fake.catalog.copy(movies = emptyList())
+        vm.loadingParts["Film"] = 45_230
+        show { HomeScreen(vm, vm.catalog!!) }
+        capture("18-home-mentre-carica")
     }
 
     @Test

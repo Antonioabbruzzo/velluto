@@ -3,6 +3,7 @@ package com.velluto.tv.data
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -57,7 +58,7 @@ class XtreamClient(val account: Account) {
         Category(id, m["category_name"].orEmpty())
     }
 
-    suspend fun liveStreams() = readList(apiUrl("get_live_streams")) { m ->
+    suspend fun liveStreams(onProgress: ((Int) -> Unit)? = null) = readList(apiUrl("get_live_streams"), onProgress) { m ->
         val id = m["stream_id"]?.toIntOrNull() ?: return@readList null
         LiveChannel(
             id = id,
@@ -68,7 +69,7 @@ class XtreamClient(val account: Account) {
         )
     }
 
-    suspend fun movies() = readList(apiUrl("get_vod_streams")) { m ->
+    suspend fun movies(onProgress: ((Int) -> Unit)? = null) = readList(apiUrl("get_vod_streams"), onProgress) { m ->
         val id = m["stream_id"]?.toIntOrNull() ?: return@readList null
         Movie(
             id = id,
@@ -81,7 +82,7 @@ class XtreamClient(val account: Account) {
         )
     }
 
-    suspend fun series() = readList(apiUrl("get_series")) { m ->
+    suspend fun series(onProgress: ((Int) -> Unit)? = null) = readList(apiUrl("get_series"), onProgress) { m ->
         val id = m["series_id"]?.toIntOrNull() ?: return@readList null
         Series(
             id = id,
@@ -180,8 +181,15 @@ class XtreamClient(val account: Account) {
         }
     }
 
-    /** Legge un array JSON di oggetti senza caricarlo tutto in memoria. */
-    private suspend fun <T> readList(url: String, map: (Map<String, String>) -> T?): List<T> =
+    /**
+     * Legge un array JSON di oggetti senza caricarlo tutto in memoria.
+     * [onProgress] riceve ogni tanto il numero di elementi letti (per mostrare l'avanzamento).
+     */
+    private suspend fun <T> readList(
+        url: String,
+        onProgress: ((Int) -> Unit)? = null,
+        map: (Map<String, String>) -> T?,
+    ): List<T> =
         withContext(Dispatchers.IO) {
             http.newCall(request(url)).execute().use { r ->
                 if (!r.isSuccessful) throw IOException("Errore del server (${r.code})")
@@ -191,11 +199,16 @@ class XtreamClient(val account: Account) {
                     reader.isLenient = true
                     if (reader.peek() != JsonToken.BEGIN_ARRAY) return@use
                     reader.beginArray()
+                    var read = 0
                     while (reader.hasNext()) {
                         if (reader.peek() == JsonToken.BEGIN_OBJECT) {
                             map(readFlatObject(reader))?.let(out::add)
                         } else {
                             reader.skipValue()
+                        }
+                        if (++read % 1000 == 0) {
+                            ensureActive() // se il caricamento viene annullato ci fermiamo subito
+                            onProgress?.invoke(out.size)
                         }
                     }
                     reader.endArray()

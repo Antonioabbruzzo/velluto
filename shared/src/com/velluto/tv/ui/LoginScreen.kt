@@ -137,6 +137,11 @@ fun LoadingScreen(vm: AppViewModel) {
                     color = Palette.TextDim,
                     fontSize = 14.sp,
                 )
+                // Sempre disponibile: se il provider non risponde non si resta bloccati qui.
+                Spacer(Modifier.height(28.dp))
+                val fr = remember { FocusRequester() }
+                TvButton("Cambia account", onClick = { vm.logout() }, focusRequester = fr)
+                RequestFocus(fr, "loading")
             }
         }
     }
