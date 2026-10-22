@@ -342,12 +342,14 @@ class ScreenshotTest {
     fun catalogCacheRoundTrip() {
         val cache = CatalogCache(File(app.cacheDir, "cache-test"))
         val acc = Account("http://x.example", "u", "p")
-        cache.save(acc, Fake.catalog)
+        val times = mapOf("Canali" to 1_000L, "Serie" to 2_000L, "Film" to 3_000L)
+        cache.save(acc, Fake.catalog, times)
         val back = cache.load(acc)
-        org.junit.Assert.assertEquals(Fake.catalog.movies, back?.movies)
-        org.junit.Assert.assertEquals(Fake.catalog.series, back?.series)
-        org.junit.Assert.assertEquals(Fake.catalog.live, back?.live)
-        org.junit.Assert.assertEquals(Fake.catalog.movieCategories, back?.movieCategories)
+        org.junit.Assert.assertEquals(Fake.catalog.movies, back?.catalog?.movies)
+        org.junit.Assert.assertEquals(Fake.catalog.series, back?.catalog?.series)
+        org.junit.Assert.assertEquals(Fake.catalog.live, back?.catalog?.live)
+        org.junit.Assert.assertEquals(Fake.catalog.movieCategories, back?.catalog?.movieCategories)
+        org.junit.Assert.assertEquals(times, back?.updatedAt)
     }
 
     @Test
