@@ -57,6 +57,7 @@ import com.velluto.tv.data.MovieDetail
 import com.velluto.tv.data.Progress
 import com.velluto.tv.data.Series
 import com.velluto.tv.data.SeriesDetail
+import com.velluto.tv.ui.AppSideMenu
 import com.velluto.tv.ui.AppViewModel
 import com.velluto.tv.ui.HomeScreen
 import com.velluto.tv.ui.LoginScreen
@@ -152,6 +153,15 @@ class ScreenshotTest {
         settle()
     }
 
+    /** Come in AppRoot: menu laterale a sinistra e contenuto a destra. */
+    @Composable
+    private fun WithMenu(content: @Composable () -> Unit) {
+        androidx.compose.foundation.layout.Row(Modifier.fillMaxSize()) {
+            AppSideMenu(vm)
+            Box(Modifier.weight(1f)) { content() }
+        }
+    }
+
     private fun settle() {
         repeat(6) {
             compose.mainClock.advanceTimeBy(500)
@@ -181,14 +191,14 @@ class ScreenshotTest {
     @Test
     fun home() {
         seedLibrary()
-        show { HomeScreen(vm, Fake.catalog) }
+        show { WithMenu { HomeScreen(vm, Fake.catalog) } }
         capture("02-home")
     }
 
     @Test
     fun homeScrolled() {
         seedLibrary()
-        show { HomeScreen(vm, Fake.catalog) }
+        show { WithMenu { HomeScreen(vm, Fake.catalog) } }
         press(Key.DirectionDown, 2)
         press(Key.DirectionRight, 2)
         capture("03-home-navigazione")
@@ -197,7 +207,7 @@ class ScreenshotTest {
     @Test
     fun menu() {
         seedLibrary()
-        show { HomeScreen(vm, Fake.catalog) }
+        show { WithMenu { HomeScreen(vm, Fake.catalog) } }
         press(Key.DirectionLeft)
         capture("04-menu-laterale")
     }
@@ -205,7 +215,7 @@ class ScreenshotTest {
     @Test
     fun seriesSection() {
         vm.section = Section.SERIES
-        show { HomeScreen(vm, Fake.catalog) }
+        show { WithMenu { HomeScreen(vm, Fake.catalog) } }
         capture("05-serie-tv")
     }
 
@@ -228,14 +238,14 @@ class ScreenshotTest {
     fun myList() {
         seedLibrary()
         vm.section = Section.MY_LIST
-        show { HomeScreen(vm, Fake.catalog) }
+        show { WithMenu { HomeScreen(vm, Fake.catalog) } }
         capture("08-la-mia-lista")
     }
 
     @Test
     fun live() {
         vm.section = Section.LIVE
-        show { HomeScreen(vm, Fake.catalog) }
+        show { WithMenu { HomeScreen(vm, Fake.catalog) } }
         press(Key.DirectionRight)
         press(Key.DirectionDown, 2)
         capture("09-tv-live")
@@ -295,14 +305,14 @@ class ScreenshotTest {
     @Test
     fun settings() {
         vm.section = Section.SETTINGS
-        show { HomeScreen(vm, Fake.catalog) }
+        show { WithMenu { HomeScreen(vm, Fake.catalog) } }
         capture("12-impostazioni")
     }
 
     @Test
     fun seriesGenrePicker() {
         vm.section = Section.SERIES
-        show { HomeScreen(vm, Fake.catalog) }
+        show { WithMenu { HomeScreen(vm, Fake.catalog) } }
         capture("13a-serie-pulsante-generi")
         press(Key.DirectionUp) // dalla prima card al pulsante "Generi"
         capture("13b-serie-generi-selezionato")
@@ -315,7 +325,7 @@ class ScreenshotTest {
     fun seriesGenreGrid() {
         vm.openGenre = buildGenreEntries(Fake.catalog, series = true).first { it.name == "Drammi" }
         vm.section = Section.SERIES_GENRE
-        show { HomeScreen(vm, Fake.catalog) }
+        show { WithMenu { HomeScreen(vm, Fake.catalog) } }
         capture("14-genere-serie")
     }
 
@@ -323,7 +333,7 @@ class ScreenshotTest {
     fun moviesGenreGrid() {
         vm.openGenre = buildGenreEntries(Fake.catalog, series = false).first { it.name == "Azione" }
         vm.section = Section.MOVIES_GENRE
-        show { HomeScreen(vm, Fake.catalog) }
+        show { WithMenu { HomeScreen(vm, Fake.catalog) } }
         capture("15-genere-film-con-trama")
     }
 
@@ -331,7 +341,7 @@ class ScreenshotTest {
     fun forYou() {
         seedLibrary()
         vm.section = Section.FOR_YOU
-        show { HomeScreen(vm, Fake.catalog) }
+        show { WithMenu { HomeScreen(vm, Fake.catalog) } }
         // I suggerimenti si calcolano in background: aspettiamo che arrivino.
         Thread.sleep(1_000)
         settle()
@@ -358,14 +368,31 @@ class ScreenshotTest {
         // Primo avvio: categorie, canali e serie arrivati, film ancora in caricamento.
         vm.catalog = Fake.catalog.copy(movies = emptyList())
         vm.loadingParts["Film"] = 45_230
-        show { HomeScreen(vm, vm.catalog!!) }
+        show { WithMenu { HomeScreen(vm, vm.catalog!!) } }
         capture("18-home-mentre-carica")
+    }
+
+    @Test
+    fun seriesDetailWithMenu() {
+        seedLibrary()
+        vm.section = Section.SERIES
+        val s = Fake.series[0]
+        // Come in AppRoot: menu laterale + scheda della serie.
+        show {
+            androidx.compose.foundation.layout.Row(Modifier.fillMaxSize()) {
+                AppSideMenu(vm)
+                Box(Modifier.weight(1f)) { SeriesDetailScreen(vm, s, Fake.seriesDetail(s)) }
+            }
+        }
+        capture("19a-scheda-con-menu")
+        press(Key.DirectionLeft) // dal pulsante "Riprendi" al menu
+        capture("19b-scheda-menu-aperto")
     }
 
     @Test
     fun moviesSectionWithPlot() {
         vm.section = Section.MOVIES
-        show { HomeScreen(vm, Fake.catalog) }
+        show { WithMenu { HomeScreen(vm, Fake.catalog) } }
         capture("17-film-con-trama")
     }
 }

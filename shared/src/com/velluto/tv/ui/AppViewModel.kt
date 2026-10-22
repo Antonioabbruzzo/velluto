@@ -372,6 +372,15 @@ class AppViewModel(val platform: PlatformServices) {
         }
     }
 
+    /** Apre una sezione dal menu laterale; se si è in una scheda (serie/film) si torna prima alla Home. */
+    fun openSection(s: Section) {
+        if (backStack.size > 1) {
+            backStack.clear()
+            backStack.add(Screen.Home)
+        }
+        section = s
+    }
+
     fun navigate(screen: Screen) {
         backStack.add(screen)
     }

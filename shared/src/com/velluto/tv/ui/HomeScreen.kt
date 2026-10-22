@@ -99,10 +99,24 @@ private fun Section.menuSection(): Section = when (this) {
     else -> this
 }
 
+/**
+ * Menu laterale, sempre visibile accanto alla Home e alle schede di serie e film.
+ * Scegliendo una voce da una scheda si torna alla Home su quella sezione.
+ */
+@Composable
+fun AppSideMenu(vm: AppViewModel) {
+    var menuHasFocus by remember { mutableStateOf(false) }
+    SideMenu(
+        current = vm.section,
+        expanded = menuHasFocus,
+        onFocusChange = { menuHasFocus = it },
+        onSelect = { section -> vm.openSection(section) },
+    )
+}
+
 @Composable
 fun HomeScreen(vm: AppViewModel, catalog: Catalog) {
     val lib by vm.library.state.collectAsState()
-    var menuHasFocus by remember { mutableStateOf(false) }
     // Generi, novità e suggerimenti sono calcolati in sottofondo dal ViewModel.
     val derived = vm.derived
     val suggestions = vm.suggestions
@@ -130,15 +144,11 @@ fun HomeScreen(vm: AppViewModel, catalog: Catalog) {
         }
     }
 
+    // Il menu laterale non sta qui ma in AppRoot (AppSideMenu): così resta visibile anche
+    // nelle schede di serie e film.
     Box(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxSize()) {
-            SideMenu(
-                current = vm.section,
-                expanded = menuHasFocus,
-                onFocusChange = { menuHasFocus = it },
-                onSelect = { section -> vm.section = section },
-            )
-            Box(Modifier.weight(1f).fillMaxHeight()) {
+        Box(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize()) {
                 when (vm.section) {
                     Section.HOME -> rememberRows(catalog, lib, derived, suggestions) {
                         homeRows(vm, catalog, lib, derived, suggestions)
