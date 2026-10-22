@@ -71,10 +71,8 @@ import com.velluto.tv.data.GenreEntry
 import com.velluto.tv.data.LibraryState
 import com.velluto.tv.data.Movie
 import com.velluto.tv.data.Progress
-import com.velluto.tv.data.Recommender
 import com.velluto.tv.data.Series
 import com.velluto.tv.data.Title
-import com.velluto.tv.data.buildGenreEntries
 import com.velluto.tv.data.cleanCategoryName
 import com.velluto.tv.platform.PlatformBackHandler
 import kotlinx.coroutines.Dispatchers
@@ -105,8 +103,11 @@ private fun Section.menuSection(): Section = when (this) {
 fun HomeScreen(vm: AppViewModel, catalog: Catalog) {
     val lib by vm.library.state.collectAsState()
     var menuHasFocus by remember { mutableStateOf(false) }
-    val seriesGenres = remember(catalog) { buildGenreEntries(catalog, series = true) }
-    val movieGenres = remember(catalog) { buildGenreEntries(catalog, series = false) }
+    // Generi, novità e suggerimenti sono calcolati in sottofondo dal ViewModel.
+    val derived = vm.derived
+    val suggestions = vm.suggestions
+    val seriesGenres = derived?.seriesGenres.orEmpty()
+    val movieGenres = derived?.movieGenres.orEmpty()
     // Elenco dei generi aperto a tutto schermo: true = generi delle serie, false = dei film.
     var genrePicker by remember { mutableStateOf<Boolean?>(null) }
     // Chiudendo l'elenco con Indietro il cursore torna sul pulsante "Generi".
@@ -139,16 +140,17 @@ fun HomeScreen(vm: AppViewModel, catalog: Catalog) {
             )
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 when (vm.section) {
-                    Section.HOME -> rememberRows(catalog, lib) { homeRows(vm, catalog, lib) }
-                        ?.let { BrowseSection(vm, "home", it) } ?: LoadingRows()
-                    Section.FOR_YOU -> ForYouSection(vm, catalog, lib)
-                    Section.SERIES -> rememberRows(catalog) { seriesRows(vm, catalog) }?.let {
+                    Section.HOME -> rememberRows(catalog, lib, derived, suggestions) {
+                        homeRows(vm, catalog, lib, derived, suggestions)
+                    }?.let { BrowseSection(vm, "home", it) } ?: LoadingRows()
+                    Section.FOR_YOU -> ForYouSection(vm, suggestions)
+                    Section.SERIES -> rememberCachedRows(vm, "series", catalog) { seriesRows(vm, catalog) }?.let {
                         BrowseSection(
                             vm, "series", it,
                             header = { PageHeader("Serie TV", null, genresButton) { genrePicker = true } },
                         )
                     } ?: LoadingRows()
-                    Section.MOVIES -> rememberRows(catalog) { movieRows(vm, catalog) }?.let {
+                    Section.MOVIES -> rememberCachedRows(vm, "movies", catalog) { movieRows(vm, catalog) }?.let {
                         BrowseSection(
                             vm, "movies", it,
                             header = { PageHeader("Film", null, genresButton) { genrePicker = false } },
@@ -402,6 +404,29 @@ private fun rememberRows(vararg keys: Any?, compute: () -> List<BrowseRow>): Lis
     return rows
 }
 
+/**
+ * Come [rememberRows], ma il risultato resta in memoria nel ViewModel finché il catalogo non cambia:
+ * rientrando in Serie TV / Film le file sono già pronte, senza ricostruirle.
+ */
+@Composable
+private fun rememberCachedRows(
+    vm: AppViewModel,
+    cacheKey: String,
+    catalog: Catalog,
+    compute: () -> List<BrowseRow>,
+): List<BrowseRow>? {
+    @Suppress("UNCHECKED_CAST")
+    val cached = vm.rowCache[cacheKey]?.takeIf { it.first === catalog }?.second as? List<BrowseRow>
+    val rows by produceState(cached, catalog) {
+        if (cached == null) {
+            val computed = withContext(Dispatchers.Default) { compute() }
+            vm.rowCache[cacheKey] = catalog to computed
+            value = computed
+        }
+    }
+    return rows
+}
+
 @Composable
 private fun LoadingRows() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -544,12 +569,9 @@ private fun GenreSection(vm: AppViewModel, genre: GenreEntry, genresButton: Focu
 // ---------- Per te (suggerimenti) ----------
 
 @Composable
-private fun ForYouSection(vm: AppViewModel, catalog: Catalog, lib: LibraryState) {
-    // Il calcolo scorre tutto il catalogo: lo facciamo fuori dal thread dell'interfaccia.
-    val rows by produceState<List<BrowseRow>?>(null, catalog, lib) {
-        value = withContext(Dispatchers.Default) { forYouRows(vm, catalog, lib) }
-    }
-    val r = rows
+private fun ForYouSection(vm: AppViewModel, suggestions: Suggestions?) {
+    // I suggerimenti arrivano già calcolati (in sottofondo) dal ViewModel: qui si compongono solo le file.
+    val r = remember(suggestions) { suggestions?.let { forYouRows(vm, it) } }
     when {
         r == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(color = Palette.Accent)
@@ -561,11 +583,10 @@ private fun ForYouSection(vm: AppViewModel, catalog: Catalog, lib: LibraryState)
     }
 }
 
-private fun forYouRows(vm: AppViewModel, catalog: Catalog, lib: LibraryState): List<BrowseRow> {
+private fun forYouRows(vm: AppViewModel, s: Suggestions): List<BrowseRow> {
     val rows = mutableListOf<BrowseRow>()
-    val suggested = Recommender.forYou(catalog, lib, limit = 40)
-    if (suggested.isNotEmpty()) rows += BrowseRow("Suggeriti per te", titleItems(vm, "fy", suggested, 40))
-    Recommender.becauseYouWatched(catalog, lib).forEachIndexed { i, (source, list) ->
+    if (s.forYou.isNotEmpty()) rows += BrowseRow("Suggeriti per te", titleItems(vm, "fy", s.forYou, 40))
+    s.becauseYouWatched.forEachIndexed { i, (source, list) ->
         rows += BrowseRow("Perché hai guardato \"${source.name}\"", titleItems(vm, "byw$i", list, 30))
     }
     return rows
@@ -619,19 +640,24 @@ private fun myListItems(vm: AppViewModel, catalog: Catalog, lib: LibraryState): 
         RowItem(id = "fav/${f.key}", title = t, onClick = { openTitle(vm, t) })
     }
 
-private fun homeRows(vm: AppViewModel, catalog: Catalog, lib: LibraryState): List<BrowseRow> {
+/**
+ * File della Home. Le parti pesanti (novità, suggerimenti) arrivano già calcolate in sottofondo:
+ * aggiungere un titolo alla lista ricostruisce solo le file leggere.
+ */
+private fun homeRows(
+    vm: AppViewModel,
+    catalog: Catalog,
+    lib: LibraryState,
+    derived: CatalogDerived?,
+    suggestions: Suggestions?,
+): List<BrowseRow> {
     val rows = mutableListOf<BrowseRow>()
     rows += BrowseRow("Continua a guardare", continueItems(vm, catalog, lib))
     rows += BrowseRow("La mia lista", myListItems(vm, catalog, lib))
-    rows += BrowseRow("Suggeriti per te", titleItems(vm, "home-fy", Recommender.forYou(catalog, lib, limit = 30), 30))
-    rows += BrowseRow(
-        "Serie TV aggiornate di recente",
-        titleItems(vm, "newseries", catalog.series.sortedByDescending { it.lastModified }, 40),
-    )
-    rows += BrowseRow(
-        "Film aggiunti di recente",
-        titleItems(vm, "newmovies", catalog.movies.sortedByDescending { it.added }, 40),
-    )
+    rows += BrowseRow("Suggeriti per te", titleItems(vm, "home-fy", suggestions?.forYou.orEmpty(), 30))
+    val d = derived?.takeIf { it.catalog === catalog }
+    rows += BrowseRow("Serie TV aggiornate di recente", titleItems(vm, "newseries", d?.recentSeries.orEmpty(), 40))
+    rows += BrowseRow("Film aggiunti di recente", titleItems(vm, "newmovies", d?.recentMovies.orEmpty(), 40))
     // Alterna qualche categoria di serie e di film, come le file della home di Netflix.
     val sc = catalog.seriesCategories.filter { catalog.seriesByCategory[it.id].orEmpty().isNotEmpty() }.take(5)
     val mc = catalog.movieCategories.filter { catalog.moviesByCategory[it.id].orEmpty().isNotEmpty() }.take(5)

@@ -155,6 +155,8 @@ class ScreenshotTest {
     private fun settle() {
         repeat(6) {
             compose.mainClock.advanceTimeBy(500)
+            // Fa scorrere anche il tempo del thread principale di Android (i suggerimenti partono dopo 2 s).
+            org.robolectric.shadows.ShadowLooper.idleMainLooper(500, java.util.concurrent.TimeUnit.MILLISECONDS)
             compose.waitForIdle()
         }
     }

@@ -100,9 +100,17 @@ fun SettingsSection(vm: AppViewModel) {
         }
         Info("Nella mia lista", "${lib.favorites.size} titoli")
         Info("Cronologia", "${lib.progress.size} episodi/film")
+        Info(
+            "Catalogo aggiornato",
+            vm.catalogStatus?.takeIf { vm.loadingParts.isNotEmpty() }?.let { "in corso…" }
+                ?: vm.catalogUpdatedAt?.let {
+                    SimpleDateFormat("dd/MM/yyyy 'alle' HH:mm", Locale.ITALY).format(Date(it)) + "  (si aggiorna da solo una volta al giorno)"
+                }
+                ?: "—",
+        )
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            TvButton("Ricarica catalogo", onClick = { vm.loadCatalog() }, icon = Icons.Filled.Refresh)
+            TvButton("Ricarica catalogo", onClick = { vm.loadCatalog(force = true) }, icon = Icons.Filled.Refresh)
             TvButton("Esci dall'account", onClick = { vm.logout() }, icon = Icons.Filled.ExitToApp)
         }
         Spacer(Modifier.height(8.dp))

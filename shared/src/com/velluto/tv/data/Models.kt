@@ -31,7 +31,8 @@ data class Movie(
     override val plot: String = "",
     override val year: String = "",
 ) : Title {
-    override val key: String get() = movieKey(name)
+    // Calcolata una volta sola: con decine di migliaia di titoli ricalcolarla ogni volta rallentava l'app.
+    override val key: String by lazy(LazyThreadSafetyMode.PUBLICATION) { movieKey(name) }
 }
 
 data class Series(
@@ -47,7 +48,7 @@ data class Series(
     /** Generi indicati dal provider, es. "Dramma, Mistero" (può essere vuoto). */
     val genre: String = "",
 ) : Title {
-    override val key: String get() = seriesKey(name)
+    override val key: String by lazy(LazyThreadSafetyMode.PUBLICATION) { seriesKey(name) }
 }
 
 data class LiveChannel(

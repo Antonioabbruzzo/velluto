@@ -18,8 +18,17 @@ import com.velluto.tv.data.Title
 import com.velluto.tv.data.XtreamClient
 import com.velluto.tv.platform.PlatformServices
 import com.velluto.tv.platform.UpdateInfo
+import androidx.compose.runtime.snapshotFlow
 import com.velluto.tv.data.CatalogCache
+import com.velluto.tv.data.Recommender
+import com.velluto.tv.data.buildGenreEntries
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -58,6 +67,21 @@ enum class Section { SEARCH, HOME, FOR_YOU, SERIES, SERIES_GENRE, MOVIES, MOVIES
 /** Informazioni in più su un titolo (trama, genere, durata) scaricate solo quando servono. */
 data class TitleExtra(val plot: String, val year: String, val genre: String, val duration: String)
 
+/** Il catalogo si riscarica al massimo una volta al giorno (o a mano da Impostazioni). */
+private const val REFRESH_EVERY_MS = 24L * 60 * 60 * 1000
+
+/** Dati ricavati dal catalogo che richiedono di scorrere decine di migliaia di titoli. */
+data class CatalogDerived(
+    val catalog: Catalog,
+    val recentSeries: List<Series>,
+    val recentMovies: List<Movie>,
+    val seriesGenres: List<GenreEntry>,
+    val movieGenres: List<GenreEntry>,
+)
+
+/** Suggerimenti per la Home e la sezione "Per te". */
+data class Suggestions(val forYou: List<Title>, val becauseYouWatched: List<Pair<Title, List<Title>>>)
+
 sealed interface LoadState {
     data object Idle : LoadState
     data class Loading(val message: String) : LoadState
@@ -89,6 +113,9 @@ class AppViewModel(val platform: PlatformServices) {
 
     /** Parti del catalogo ancora in arrivo, con quanti elementi sono già stati letti. */
     val loadingParts = mutableStateMapOf<String, Int>()
+
+    /** Quando è stato scaricato l'ultima volta ogni elenco ("Canali", "Serie", "Film"). */
+    private val updatedAt = mutableStateMapOf<String, Long>()
     var catalogError by mutableStateOf<String?>(null)
         private set
 
@@ -132,7 +159,60 @@ class AppViewModel(val platform: PlatformServices) {
         }
     }
 
+    /**
+     * I calcoli pesanti girano su un solo thread in sottofondo, così non rallentano mai
+     * l'interfaccia né si contendono il processore (sulla Fire TV è poco potente).
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val background = Dispatchers.Default.limitedParallelism(1)
+
+    var derived by mutableStateOf<CatalogDerived?>(null)
+        private set
+    var suggestions by mutableStateOf<Suggestions?>(null)
+        private set
+
+    /** File delle sezioni Serie TV / Film già costruite, per non rifarle a ogni accesso. */
+    internal val rowCache = HashMap<String, Pair<Catalog, Any>>()
+
+    @OptIn(FlowPreview::class)
+    private fun startBackgroundWork() {
+        // Generi e novità: una volta per ogni versione del catalogo.
+        scope.launch {
+            snapshotFlow { catalog }.filterNotNull().collectLatest { c ->
+                derived = withContext(background) {
+                    // Prepara qui (non sul thread dell'interfaccia) gli indici del catalogo usati ovunque.
+                    c.resolve("movie:", -1)
+                    c.resolve("series:", -1)
+                    c.moviesByCategory
+                    c.seriesByCategory
+                    c.liveByCategory
+                    CatalogDerived(
+                        catalog = c,
+                        recentSeries = c.series.sortedByDescending { it.lastModified }.take(60),
+                        recentMovies = c.movies.sortedByDescending { it.added }.take(60),
+                        seriesGenres = buildGenreEntries(c, series = true),
+                        movieGenres = buildGenreEntries(c, series = false),
+                    )
+                }
+            }
+        }
+        // Suggerimenti: ricalcolati con calma (qualche secondo dopo) quando cambiano catalogo, lista o cronologia.
+        scope.launch {
+            combine(snapshotFlow { catalog }.filterNotNull(), library.state) { c, lib -> c to lib }
+                .debounce(2_000)
+                .collectLatest { (c, lib) ->
+                    suggestions = withContext(background) {
+                        Suggestions(
+                            forYou = Recommender.forYou(c, lib, limit = 40),
+                            becauseYouWatched = Recommender.becauseYouWatched(c, lib),
+                        )
+                    }
+                }
+        }
+    }
+
     init {
+        startBackgroundWork()
         if (account != null) loadCatalog()
         checkForUpdate()
     }
@@ -159,6 +239,7 @@ class AppViewModel(val platform: PlatformServices) {
         // La libreria (preferiti e cronologia) NON viene cancellata.
         loadJob?.cancel()
         loadingParts.clear()
+        updatedAt.clear()
         catalogError = null
         accounts.clear()
         account = null
@@ -171,28 +252,49 @@ class AppViewModel(val platform: PlatformServices) {
         section = Section.HOME
     }
 
+    /** Data dell'ultimo aggiornamento completo del catalogo (null se non è mai stato completato). */
+    val catalogUpdatedAt: Long?
+        get() = CatalogCache.PARTS.map { updatedAt[it] ?: 0L }.minOrNull()?.takeIf { it > 0 }
+
     /**
      * Carica il catalogo senza far aspettare:
      * 1. mostra subito la copia salvata sul dispositivo (al primo avvio: solo le categorie, in pochi secondi);
-     * 2. canali, serie e film arrivano in sottofondo, ognuno appena è pronto, e vengono salvati.
-     * Con provider lenti (elenchi completi da diversi minuti) l'app resta usabile da subito.
+     * 2. riscarica in sottofondo solo gli elenchi più vecchi di un giorno (o mancanti), ognuno appena è pronto.
+     * [force] = true (da Impostazioni → Ricarica catalogo) riscarica tutto subito.
      */
-    fun loadCatalog() {
+    fun loadCatalog(force: Boolean = false) {
         val c = client ?: return
         val acc = account ?: return
         loadJob?.cancel()
         loadingParts.clear()
         catalogError = null
-        loadState = LoadState.Loading("Collegamento al provider…")
+        if (catalog == null) loadState = LoadState.Loading("Collegamento al provider…")
         loadJob = scope.launch {
             try {
                 if (accountInfo == null) accountInfo = runCatching { c.accountInfo() }.getOrNull()
-                val cached = withContext(Dispatchers.IO) { catalogCache.load(acc) }
-                if (cached != null) {
-                    catalog = cached
+                if (catalog == null) {
+                    val cached = withContext(Dispatchers.IO) { catalogCache.load(acc) }
+                    if (cached != null) {
+                        catalog = cached.catalog
+                        updatedAt.putAll(cached.updatedAt)
+                        loadState = LoadState.Idle
+                    } else {
+                        loadState = LoadState.Loading("Caricamento delle categorie…")
+                    }
+                }
+                val now = System.currentTimeMillis()
+                val current = catalog
+                fun isEmpty(part: String) = when (part) {
+                    "Canali" -> current?.live.isNullOrEmpty()
+                    "Serie" -> current?.series.isNullOrEmpty()
+                    else -> current?.movies.isNullOrEmpty()
+                }
+                val toRefresh = CatalogCache.PARTS.filter { part ->
+                    force || isEmpty(part) || now - (updatedAt[part] ?: 0L) > REFRESH_EVERY_MS
+                }
+                if (toRefresh.isEmpty()) {
                     loadState = LoadState.Idle
-                } else {
-                    loadState = LoadState.Loading("Caricamento delle categorie…")
+                    return@launch // catalogo aggiornato da meno di un giorno: niente da scaricare
                 }
                 // Le categorie arrivano in pochi secondi: al primo avvio bastano per aprire la Home.
                 val (liveCats, movieCats, seriesCats) = coroutineScope {
@@ -204,7 +306,7 @@ class AppViewModel(val platform: PlatformServices) {
                 val base = catalog ?: Catalog(liveCats, emptyList(), movieCats, emptyList(), seriesCats, emptyList())
                 catalog = base.copy(liveCategories = liveCats, movieCategories = movieCats, seriesCategories = seriesCats)
                 loadState = LoadState.Idle
-                refreshLists(c, acc)
+                refreshLists(c, acc, toRefresh)
             } catch (e: CancellationException) {
                 throw e
             } catch (t: Throwable) {
@@ -215,13 +317,15 @@ class AppViewModel(val platform: PlatformServices) {
         }
     }
 
-    /** Scarica canali, serie e film in parallelo; ognuno aggiorna l'app e la copia salvata appena arriva. */
-    private suspend fun refreshLists(c: XtreamClient, acc: Account) = coroutineScope {
+    /** Scarica in parallelo gli elenchi indicati; ognuno aggiorna l'app e la copia salvata appena arriva. */
+    private suspend fun refreshLists(c: XtreamClient, acc: Account, parts: List<String>) = coroutineScope {
         val failed = mutableListOf<String>()
         suspend fun <T> part(name: String, fetch: suspend ((Int) -> Unit) -> List<T>, apply: (Catalog, List<T>) -> Catalog) {
+            if (name !in parts) return
             try {
                 val list = retryOnce { fetch { n -> loadingParts[name] = n } }
                 catalog = catalog?.let { apply(it, list) }
+                updatedAt[name] = System.currentTimeMillis()
                 saveCache(acc)
             } catch (e: CancellationException) {
                 throw e
@@ -231,7 +335,7 @@ class AppViewModel(val platform: PlatformServices) {
                 loadingParts.remove(name)
             }
         }
-        listOf("Canali", "Serie", "Film").forEach { loadingParts[it] = 0 }
+        parts.forEach { loadingParts[it] = 0 }
         listOf(
             launch { part("Canali", { p -> c.liveStreams(p) }) { cat, l -> cat.copy(live = l) } },
             launch { part("Serie", { p -> c.series(p) }) { cat, l -> cat.copy(series = l) } },
@@ -245,8 +349,9 @@ class AppViewModel(val platform: PlatformServices) {
 
     private suspend fun saveCache(acc: Account) {
         val snapshot = catalog ?: return
+        val times = updatedAt.toMap()
         withContext(Dispatchers.IO + NonCancellable) {
-            cacheLock.withLock { runCatching { catalogCache.save(acc, snapshot) } }
+            cacheLock.withLock { runCatching { catalogCache.save(acc, snapshot, times) } }
         }
     }
 
