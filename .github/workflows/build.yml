@@ -8,8 +8,9 @@ on:
 permissions:
   contents: read
 
+# Una coda per ramo: le prove sui rami di test non possono annullare una pubblicazione da main.
 concurrency:
-  group: build
+  group: build-${{ github.ref }}
   cancel-in-progress: false
 
 env:
