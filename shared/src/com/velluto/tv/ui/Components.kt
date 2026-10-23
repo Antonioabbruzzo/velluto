@@ -23,8 +23,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -100,10 +106,14 @@ fun PosterCard(
     width: Dp = 120.dp,
     aspect: Float = 2f / 3f,
     focusRequester: FocusRequester? = null,
+    /** Mouse sopra la card (Windows). Se null fa come [onFocused]. */
+    onHovered: (() -> Unit)? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused = interaction.isHighlighted()
-    LaunchedEffect(focused) { if (focused) onFocused() }
+    // Il passaggio del mouse è separato dalla selezione col telecomando: non deve far scorrere la pagina.
+    val hovered by interaction.collectIsHoveredAsState()
+    LaunchedEffect(hovered) { if (hovered) (onHovered ?: onFocused)() }
     val shape = RoundedCornerShape(6.dp)
 
     // Nessun ingrandimento: la card selezionata ha solo un bordo bianco, così niente si sposta.
@@ -170,29 +180,128 @@ fun ContentRow(
     focusRequester: FocusRequester,
     cardWidth: Dp = 120.dp,
     aspect: Float = 2f / 3f,
+    /** Mouse sopra una card: aggiorna solo il banner, senza far scorrere la pagina. */
+    onItemHovered: (RowItem) -> Unit = onItemFocused,
+    /** Apre la categoria completa (titolo cliccabile + card "Vedi tutti"). Null per file come "Novità". */
+    onOpenAll: (() -> Unit)? = null,
+    totalCount: Int = items.size,
 ) {
+    val rowState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    val rowInteraction = remember { MutableInteractionSource() }
+    val rowHovered by rowInteraction.collectIsHoveredAsState()
+
     Column(Modifier.fillMaxWidth()) {
+        RowTitle(title, onOpenAll)
+        Box(Modifier.hoverable(rowInteraction)) {
+            LazyRow(
+                state = rowState,
+                contentPadding = PaddingValues(horizontal = 40.dp, vertical = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                itemsIndexed(items) { _, item ->
+                    PosterCard(
+                        item = item,
+                        onFocused = { onItemFocused(item) },
+                        onHovered = { onItemHovered(item) },
+                        width = cardWidth,
+                        aspect = aspect,
+                        focusRequester = if (item.id == focusId) focusRequester else null,
+                    )
+                }
+                if (onOpenAll != null) {
+                    item { SeeAllCard(totalCount, cardWidth, aspect, onOpenAll) }
+                }
+            }
+            // Col mouse (Windows) le file non si scorrono in orizzontale con la rotellina: frecce ai lati.
+            if (rowHovered) {
+                Box(Modifier.matchParentSize()) {
+                    RowArrow("‹", Modifier.align(Alignment.CenterStart)) {
+                        scope.launch { rowState.animateScrollBy(-900f) }
+                    }
+                    RowArrow("›", Modifier.align(Alignment.CenterEnd)) {
+                        scope.launch { rowState.animateScrollBy(900f) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Titolo della fila; se la fila è una categoria è cliccabile col mouse e mostra "Vedi tutti ›". */
+@Composable
+private fun RowTitle(title: String, onOpenAll: (() -> Unit)?) {
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    Row(
+        Modifier
+            .padding(start = 40.dp, top = 6.dp)
+            .then(
+                if (onOpenAll != null) {
+                    Modifier
+                        .hoverable(interaction)
+                        // Solo clic (mouse): col telecomando si usa la card "Vedi tutti" in fondo alla fila.
+                        .pointerInput(onOpenAll) { detectTapGestures { onOpenAll() } }
+                } else Modifier
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Text(
             title,
-            modifier = Modifier.padding(start = 40.dp, top = 6.dp),
-            color = Palette.Text,
+            color = if (hovered) Color.White else Palette.Text,
             fontSize = 17.sp,
             fontWeight = FontWeight.Bold,
         )
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 40.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            itemsIndexed(items) { _, item ->
-                PosterCard(
-                    item = item,
-                    onFocused = { onItemFocused(item) },
-                    width = cardWidth,
-                    aspect = aspect,
-                    focusRequester = if (item.id == focusId) focusRequester else null,
-                )
-            }
+        if (onOpenAll != null) {
+            Spacer(Modifier.width(12.dp))
+            Text(
+                "Vedi tutti  ›",
+                color = if (hovered) Color.White else Palette.TextDim,
+                fontSize = 13.sp,
+                fontWeight = if (hovered) FontWeight.Bold else FontWeight.Normal,
+            )
         }
+    }
+}
+
+/** Ultima card della fila: apre tutti i titoli della categoria (col telecomando: → fino in fondo e OK). */
+@Composable
+private fun SeeAllCard(total: Int, width: Dp, aspect: Float, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused = interaction.isHighlighted()
+    val shape = RoundedCornerShape(6.dp)
+    Box(
+        Modifier
+            .width(width)
+            .aspectRatio(aspect)
+            .clip(shape)
+            .background(if (focused) Color.White else Palette.SurfaceHigh)
+            .border(3.dp, if (focused) Color.White else Color.Transparent, shape)
+            .hoverable(interaction)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("›", color = if (focused) Color.Black else Color.White, fontSize = 36.sp, fontWeight = FontWeight.Bold)
+            Text("Vedi tutti", color = if (focused) Color.Black else Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            Text("$total titoli", color = if (focused) Color.DarkGray else Palette.TextDim, fontSize = 12.sp)
+        }
+    }
+}
+
+/** Freccia per scorrere una fila col mouse (non selezionabile col telecomando). */
+@Composable
+private fun RowArrow(symbol: String, modifier: Modifier, onClick: () -> Unit) {
+    Box(
+        modifier
+            .padding(horizontal = 6.dp)
+            .size(width = 44.dp, height = 96.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.Black.copy(alpha = 0.7f))
+            .pointerInput(Unit) { detectTapGestures { onClick() } },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(symbol, color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold)
     }
 }
 

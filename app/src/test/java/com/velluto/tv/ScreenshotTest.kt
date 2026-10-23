@@ -390,6 +390,17 @@ class ScreenshotTest {
     }
 
     @Test
+    fun seeAllCard() {
+        vm.section = Section.SERIES
+        show { WithMenu { HomeScreen(vm, Fake.catalog) } }
+        press(Key.DirectionDown) // dalla fila "Novità" alla prima categoria
+        press(Key.DirectionRight, 5) // fino alla card "Vedi tutti" in fondo alla fila
+        capture("20-vedi-tutti")
+        press(Key.Enter)
+        capture("21-categoria-completa")
+    }
+
+    @Test
     fun moviesSectionWithPlot() {
         vm.section = Section.MOVIES
         show { WithMenu { HomeScreen(vm, Fake.catalog) } }

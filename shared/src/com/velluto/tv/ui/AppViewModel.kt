@@ -372,6 +372,16 @@ class AppViewModel(val platform: PlatformServices) {
         }
     }
 
+    /** Sezione a cui tornare con Indietro da una pagina di genere/categoria. */
+    var genreReturnSection: Section = Section.SERIES
+
+    /** Apre tutti i titoli di una categoria ("Vedi tutti"); Indietro riporta alla sezione di partenza. */
+    fun openGenreEntry(g: GenreEntry) {
+        if (section != Section.SERIES_GENRE && section != Section.MOVIES_GENRE) genreReturnSection = section
+        openGenre = g
+        section = if (g.isSeries) Section.SERIES_GENRE else Section.MOVIES_GENRE
+    }
+
     /** Apre una sezione dal menu laterale; se si è in una scheda (serie/film) si torna prima alla Home. */
     fun openSection(s: Section) {
         if (backStack.size > 1) {

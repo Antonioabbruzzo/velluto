@@ -67,6 +67,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.velluto.tv.data.Catalog
+import com.velluto.tv.data.Category
 import com.velluto.tv.data.GenreEntry
 import com.velluto.tv.data.LibraryState
 import com.velluto.tv.data.Movie
@@ -135,11 +136,10 @@ fun HomeScreen(vm: AppViewModel, catalog: Catalog) {
         }
     }
 
-    // Indietro: da un genere torna a tutte le serie/film, da una sezione torna alla Home.
+    // Indietro: da un genere/categoria torna dove eri (Serie TV, Film o Home), da una sezione torna alla Home.
     PlatformBackHandler(enabled = vm.section != Section.HOME) {
         vm.section = when (vm.section) {
-            Section.SERIES_GENRE -> Section.SERIES
-            Section.MOVIES_GENRE -> Section.MOVIES
+            Section.SERIES_GENRE, Section.MOVIES_GENRE -> vm.genreReturnSection
             else -> Section.HOME
         }
     }
@@ -201,6 +201,8 @@ fun HomeScreen(vm: AppViewModel, catalog: Catalog) {
                     // Se la pagina non cambia (stesso genere) il cursore torna sul pulsante "Generi".
                     if (target == vm.section && (g == null || g.id == vm.openGenre?.id)) restoreGenresFocus = true
                     if (g != null) vm.openGenre = g
+                    // Dal pulsante "Generi" Indietro riporta a tutte le serie / tutti i film.
+                    vm.genreReturnSection = if (pickerSeries) Section.SERIES else Section.MOVIES
                     vm.section = target
                 },
                 onDismiss = {
@@ -400,7 +402,24 @@ private fun MenuItem(
 
 // ---------- Sezioni con hero + file di locandine ----------
 
-data class BrowseRow(val title: String, val items: List<RowItem>, val wide: Boolean = false)
+data class BrowseRow(
+    val title: String,
+    val items: List<RowItem>,
+    val wide: Boolean = false,
+    /** Se la fila è una categoria: tutti i suoi titoli, per "Vedi tutti". */
+    val openAll: GenreEntry? = null,
+)
+
+/** Fila di una categoria del provider: mostra i primi titoli e permette di aprirla tutta. */
+private fun categoryRow(vm: AppViewModel, title: String, prefix: String, category: Category, all: List<Title>, isSeries: Boolean) =
+    BrowseRow(
+        title = title,
+        items = titleItems(vm, prefix, all, ROW_PREVIEW),
+        openAll = GenreEntry(category.id, cleanCategoryName(category.name), isSeries, all),
+    )
+
+/** Titoli mostrati in una fila di categoria; gli altri si vedono con "Vedi tutti". */
+private const val ROW_PREVIEW = 40
 
 /**
  * Calcola le file fuori dal thread dell'interfaccia (con cataloghi da decine di migliaia di titoli
@@ -515,10 +534,14 @@ private fun BrowseSection(
                         focusedRow = rowIndex
                         vm.lastFocus[sectionKey] = it.id
                     },
+                    // Mouse sopra una card: aggiorna solo il banner (niente scorrimento della pagina).
+                    onItemHovered = { focused = it },
                     focusId = focusId,
                     focusRequester = fr,
                     cardWidth = if (row.wide) 220.dp else 120.dp,
                     aspect = if (row.wide) 16f / 9f else 2f / 3f,
+                    onOpenAll = row.openAll?.let { g -> { vm.openGenreEntry(g) } },
+                    totalCount = row.openAll?.titles?.size ?: row.items.size,
                 )
             }
         }
@@ -673,10 +696,10 @@ private fun homeRows(
     val mc = catalog.movieCategories.filter { catalog.moviesByCategory[it.id].orEmpty().isNotEmpty() }.take(5)
     for (i in 0 until maxOf(sc.size, mc.size)) {
         sc.getOrNull(i)?.let { c ->
-            rows += BrowseRow("Serie · ${cleanCategoryName(c.name)}", titleItems(vm, "hs-${c.id}", catalog.seriesByCategory[c.id].orEmpty()))
+            rows += categoryRow(vm, "Serie · ${cleanCategoryName(c.name)}", "hs-${c.id}", c, catalog.seriesByCategory[c.id].orEmpty(), isSeries = true)
         }
         mc.getOrNull(i)?.let { c ->
-            rows += BrowseRow("Film · ${cleanCategoryName(c.name)}", titleItems(vm, "hm-${c.id}", catalog.moviesByCategory[c.id].orEmpty()))
+            rows += categoryRow(vm, "Film · ${cleanCategoryName(c.name)}", "hm-${c.id}", c, catalog.moviesByCategory[c.id].orEmpty(), isSeries = false)
         }
     }
     return rows
@@ -686,14 +709,14 @@ private fun seriesRows(vm: AppViewModel, catalog: Catalog): List<BrowseRow> =
     listOf(
         BrowseRow("Novità", titleItems(vm, "s-new", catalog.series.sortedByDescending { it.lastModified }, 40))
     ) + catalog.seriesCategories.map { c ->
-        BrowseRow(cleanCategoryName(c.name), titleItems(vm, "s-${c.id}", catalog.seriesByCategory[c.id].orEmpty(), 200))
+        categoryRow(vm, cleanCategoryName(c.name), "s-${c.id}", c, catalog.seriesByCategory[c.id].orEmpty(), isSeries = true)
     }
 
 private fun movieRows(vm: AppViewModel, catalog: Catalog): List<BrowseRow> =
     listOf(
         BrowseRow("Novità", titleItems(vm, "m-new", catalog.movies.sortedByDescending { it.added }, 40))
     ) + catalog.movieCategories.map { c ->
-        BrowseRow(cleanCategoryName(c.name), titleItems(vm, "m-${c.id}", catalog.moviesByCategory[c.id].orEmpty(), 200))
+        categoryRow(vm, cleanCategoryName(c.name), "m-${c.id}", c, catalog.moviesByCategory[c.id].orEmpty(), isSeries = false)
     }
 
 // ---------- La mia lista (griglia) ----------
