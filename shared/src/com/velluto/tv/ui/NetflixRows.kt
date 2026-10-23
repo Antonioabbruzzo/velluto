@@ -83,6 +83,12 @@ fun NetflixBrowse(
     val allIds = remember(visibleRows) { visibleRows.flatMap { r -> r.items.map { it.id } }.toSet() }
     val focusId = savedId?.takeIf { it in allIds } ?: visibleRows.firstOrNull()?.items?.firstOrNull()?.id
 
+    // Una sola card allargata in tutta la pagina e vince l'ultimo input usato:
+    // le frecce allargano la card selezionata, il mouse quella su cui ti fermi.
+    var focusedId by remember { mutableStateOf<String?>(null) }
+    var expandedId by remember { mutableStateOf<String?>(null) }
+    var expandedByMouse by remember { mutableStateOf(false) }
+
     // La fila selezionata resta sempre in alto. Solo il telecomando/tastiera la sposta: il mouse no.
     LaunchedEffect(activeRow) { if (visibleRows.isNotEmpty()) listState.animateScrollToItem(activeRow) }
     // Trama dei film scaricata quando ti fermi su una card.
@@ -113,10 +119,30 @@ fun NetflixBrowse(
                         activeItem = activeItem,
                         focusId = focusId,
                         focusRequester = fr,
+                        expandedId = expandedId,
+                        expandedByMouse = expandedByMouse,
                         onItemFocused = { item ->
+                            focusedId = item.id
+                            expandedId = item.id
+                            expandedByMouse = false
                             activeRow = rowIndex
                             activeItem = item
                             vm.lastFocus[sectionKey] = item.id
+                        },
+                        onItemBlurred = { item ->
+                            if (focusedId == item.id) focusedId = null
+                            if (expandedId == item.id && !expandedByMouse) expandedId = null
+                        },
+                        onItemHoverSettled = { item ->
+                            expandedId = item.id
+                            expandedByMouse = true
+                        },
+                        onRowHoverEnd = {
+                            // Il mouse è uscito dalla fila: torna allargata la card selezionata con le frecce.
+                            if (expandedByMouse && row.items.any { it.id == expandedId }) {
+                                expandedId = focusedId
+                                expandedByMouse = false
+                            }
                         },
                     )
                 }
@@ -134,32 +160,33 @@ private fun NetflixRow(
     activeItem: RowItem?,
     focusId: String?,
     focusRequester: FocusRequester,
+    expandedId: String?,
+    expandedByMouse: Boolean,
     onItemFocused: (RowItem) -> Unit,
+    onItemBlurred: (RowItem) -> Unit,
+    onItemHoverSettled: (RowItem) -> Unit,
+    onRowHoverEnd: () -> Unit,
 ) {
     val rowState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val rowInteraction = remember { MutableInteractionSource() }
     val rowHovered by rowInteraction.collectIsHoveredAsState()
 
-    // Una sola card allargata per fila: quella selezionata col telecomando oppure, col mouse,
-    // l'ultima su cui ti sei fermato. Quando passi a un'altra, la vecchia si chiude nello stesso
-    // istante in cui la nuova si apre: così la card sotto il cursore non "scappa".
-    var focusedId by remember { mutableStateOf<String?>(null) }
-    var hoverCandidate by remember { mutableStateOf<String?>(null) }
-    var hoverId by remember { mutableStateOf<String?>(null) }
+    // Col mouse la card si allarga dopo un attimo che ci sei sopra. Quando passi a un'altra,
+    // la vecchia si chiude nello stesso istante in cui la nuova si apre: la card sotto il cursore non "scappa".
+    var hoverCandidate by remember { mutableStateOf<RowItem?>(null) }
     LaunchedEffect(hoverCandidate) {
         val c = hoverCandidate ?: return@LaunchedEffect
         delay(HOVER_DELAY_MS)
-        hoverId = c
+        onItemHoverSettled(c)
     }
     LaunchedEffect(rowHovered) {
         if (!rowHovered) {
-            delay(600)
             hoverCandidate = null
-            hoverId = null
+            delay(600)
+            onRowHoverEnd()
         }
     }
-    val expandedId = focusedId ?: hoverId
     val openAll = row.openAll
 
     Column(Modifier.fillMaxWidth()) {
@@ -175,17 +202,10 @@ private fun NetflixRow(
                         vm = vm,
                         item = item,
                         expanded = item.id == expandedId,
-                        showDetailsInside = item.id == expandedId && focusedId == null,
+                        showDetailsInside = item.id == expandedId && expandedByMouse,
                         focusRequester = if (item.id == focusId) focusRequester else null,
-                        onFocusChange = { has ->
-                            if (has) {
-                                focusedId = item.id
-                                onItemFocused(item)
-                            } else if (focusedId == item.id) {
-                                focusedId = null
-                            }
-                        },
-                        onHoverStart = { hoverCandidate = item.id },
+                        onFocusChange = { has -> if (has) onItemFocused(item) else onItemBlurred(item) },
+                        onHoverStart = { hoverCandidate = item },
                     )
                 }
                 if (openAll != null) {
