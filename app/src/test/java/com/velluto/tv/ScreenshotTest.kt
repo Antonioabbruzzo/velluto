@@ -346,6 +346,10 @@ class ScreenshotTest {
         Thread.sleep(1_000)
         settle()
         capture("16-per-te")
+        press(Key.DirectionRight) // la card selezionata si allarga, le altre restano verticali
+        capture("16b-per-te-card-successiva")
+        press(Key.DirectionDown) // fila successiva: la trama compare sotto di essa
+        capture("16c-per-te-fila-successiva")
     }
 
     @Test

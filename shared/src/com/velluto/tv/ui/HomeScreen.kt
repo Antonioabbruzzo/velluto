@@ -627,7 +627,8 @@ private fun ForYouSection(vm: AppViewModel, suggestions: Suggestions?) {
         r.isEmpty() -> EmptyMessage(
             "Qui troverai i suggerimenti scelti per te.\nGuarda qualche serie o film, oppure aggiungili a \"La mia lista\"."
         )
-        else -> BrowseSection(vm, "foryou", r)
+        // "Per te" usa lo stile del nuovo Netflix (card che si allarga, trama sotto la fila).
+        else -> ForYouNetflixStyle(vm, r)
     }
 }
 
