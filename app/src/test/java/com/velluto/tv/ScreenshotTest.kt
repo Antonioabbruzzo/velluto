@@ -417,6 +417,112 @@ class ScreenshotTest {
     }
 }
 
+/**
+ * Anteprima su telefono (Pixel 7: 915x412 dp). L'app è pensata per TV e PC e si apre sempre in
+ * orizzontale; la versione verticale mostra cosa succederebbe tenendo il telefono dritto.
+ */
+@RunWith(AndroidJUnit4::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [34])
+class MobilePreviewTest {
+
+    @get:Rule
+    val compose = createAndroidComposeRule<ComponentActivity>()
+
+    private lateinit var vm: AppViewModel
+
+    @Before
+    fun setUp() {
+        val app: Application = ApplicationProvider.getApplicationContext()
+        File(app.filesDir, "library.json").delete()
+        Coil.setImageLoader(
+            ImageLoader.Builder(app)
+                .components { add(FakeImages(app.resources)) }
+                .dispatcher(Dispatchers.Unconfined)
+                .build()
+        )
+        vm = AppViewModel(androidServices(app))
+        vm.catalog = Fake.catalog
+        vm.account = Account("http://mio-provider.example:8080", "mario.rossi", "password")
+        Fake.movies.forEachIndexed { i, m ->
+            vm.extras[m.key] = TitleExtra(Fake.moviePlot, "${2015 + i % 10}", Fake.movieGenres[i / 10], "1h ${40 + i % 20}m")
+        }
+        val now = System.currentTimeMillis()
+        val s0 = Fake.series[0]
+        vm.library.saveProgress(
+            Progress(Progress.episodeKey(s0.key, 1, 2), s0.key, s0.id, s0.name, s0.image, "12", 1, 2, "", 1_100_000, 2_700_000, now)
+        )
+        vm.library.toggleFavorite(Fake.series[2])
+        vm.library.toggleFavorite(Fake.movies[11])
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    private fun show(content: @Composable () -> Unit) {
+        compose.setContent {
+            val inputMode = LocalInputModeManager.current
+            SideEffect { inputMode.requestInputMode(InputMode.Keyboard) }
+            VellutoTheme {
+                Box(Modifier.fillMaxSize().background(Palette.Background)) {
+                    androidx.compose.foundation.layout.Row(Modifier.fillMaxSize()) {
+                        AppSideMenu(vm)
+                        Box(Modifier.weight(1f)) { content() }
+                    }
+                }
+            }
+        }
+        repeat(2) {
+            repeat(6) {
+                compose.mainClock.advanceTimeBy(500)
+                org.robolectric.shadows.ShadowLooper.idleMainLooper(500, java.util.concurrent.TimeUnit.MILLISECONDS)
+                compose.waitForIdle()
+            }
+            Thread.sleep(500)
+        }
+    }
+
+    private fun capture(name: String) {
+        compose.onRoot().captureRoboImage("screenshots/mobile-$name.png")
+    }
+
+    @Test
+    @Config(qualifiers = "w915dp-h412dp-land-xxhdpi")
+    fun homeLandscape() {
+        show { HomeScreen(vm, Fake.catalog) }
+        capture("1-home-orizzontale")
+    }
+
+    @Test
+    @Config(qualifiers = "w915dp-h412dp-land-xxhdpi")
+    fun seriesDetailLandscape() {
+        val s = Fake.series[0]
+        show { SeriesDetailScreen(vm, s, Fake.seriesDetail(s)) }
+        capture("2-scheda-serie-orizzontale")
+    }
+
+    @Test
+    @Config(qualifiers = "w915dp-h412dp-land-xxhdpi")
+    fun moviesLandscape() {
+        vm.section = Section.MOVIES
+        show { HomeScreen(vm, Fake.catalog) }
+        capture("3-film-orizzontale")
+    }
+
+    @Test
+    @Config(qualifiers = "w412dp-h915dp-port-xxhdpi")
+    fun homePortrait() {
+        show { HomeScreen(vm, Fake.catalog) }
+        capture("4-home-verticale")
+    }
+
+    @Test
+    @Config(qualifiers = "w412dp-h915dp-port-xxhdpi")
+    fun seriesDetailPortrait() {
+        val s = Fake.series[0]
+        show { SeriesDetailScreen(vm, s, Fake.seriesDetail(s)) }
+        capture("5-scheda-serie-verticale")
+    }
+}
+
 /** Restituisce immagini generate al volo per gli indirizzi "fake://…". */
 private class FakeImages(private val res: Resources) : Interceptor {
     override suspend fun intercept(chain: Interceptor.Chain): ImageResult {

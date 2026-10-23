@@ -22,7 +22,7 @@ jobs:
           gradle-version: "8.11.1"
 
       - name: Genera gli screenshot
-        run: gradle :app:testDebugUnitTest --tests "com.velluto.tv.ScreenshotTest" --no-daemon --stacktrace
+        run: gradle :app:testDebugUnitTest --tests "com.velluto.tv.ScreenshotTest" --tests "com.velluto.tv.MobilePreviewTest" --no-daemon --stacktrace
 
       - uses: actions/upload-artifact@v4
         if: always()
