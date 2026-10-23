@@ -399,6 +399,12 @@ fun MetaLine(year: String, rating: String, extra: String? = null) {
     }
 }
 
+/** Pulsante "← Indietro" in alto a sinistra (categorie, generi, schede di serie e film). */
+@Composable
+fun BackButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    TvButton(text = "←  Indietro", onClick = onClick, modifier = modifier)
+}
+
 /** Pulsante in stile TV: bianco quando selezionato. */
 @Composable
 fun TvButton(

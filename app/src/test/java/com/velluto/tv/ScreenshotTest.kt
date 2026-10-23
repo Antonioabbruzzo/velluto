@@ -398,6 +398,11 @@ class ScreenshotTest {
         capture("20-vedi-tutti")
         press(Key.Enter)
         capture("21-categoria-completa")
+        press(Key.DirectionUp) // dalla griglia ai pulsanti in alto
+        press(Key.DirectionLeft, 2) // fino a "← Indietro"
+        capture("22-categoria-indietro-selezionato")
+        press(Key.Enter)
+        capture("23-tornato-a-serie-tv")
     }
 
     @Test

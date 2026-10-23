@@ -218,11 +218,22 @@ fun HomeScreen(vm: AppViewModel, catalog: Catalog) {
 
 /** Titolo della pagina con il pulsante "Generi ▾", in alto a sinistra sopra il banner. */
 @Composable
-private fun PageHeader(title: String, genre: String?, buttonFocus: FocusRequester, onGenres: () -> Unit) {
+private fun PageHeader(
+    title: String,
+    genre: String?,
+    buttonFocus: FocusRequester,
+    /** Se presente mostra "← Indietro" prima del titolo (pagine di genere/categoria). */
+    onBack: (() -> Unit)? = null,
+    onGenres: () -> Unit,
+) {
     Row(
         Modifier.padding(start = 40.dp, top = 22.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (onBack != null) {
+            BackButton(onBack)
+            Spacer(Modifier.width(20.dp))
+        }
         Text(title, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
         if (genre != null) {
             Text("  ›  $genre", color = Palette.Text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
@@ -569,7 +580,11 @@ private fun GenreSection(vm: AppViewModel, genre: GenreEntry, genresButton: Focu
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.height(250.dp)) {
             Hero(hero.title, Modifier.fillMaxSize(), extraFor = { vm.extras[it.key] })
-            PageHeader(if (genre.isSeries) "Serie TV" else "Film", genre.name, genresButton, onChangeGenre)
+            PageHeader(
+                if (genre.isSeries) "Serie TV" else "Film", genre.name, genresButton,
+                onBack = { vm.section = vm.genreReturnSection },
+                onGenres = onChangeGenre,
+            )
         }
         Text(
             "${items.size} ${if (genre.isSeries) "serie" else "film"}",

@@ -123,11 +123,15 @@ fun SeriesDetailScreen(vm: AppViewModel, series: Series, preloaded: SeriesDetail
     Box(Modifier.fillMaxSize()) {
         DetailBackground(d?.backdrop?.ifBlank { null } ?: series.backdrop.ifBlank { series.image })
         Column(Modifier.fillMaxSize().padding(top = 32.dp)) {
-            Column(Modifier.padding(horizontal = 48.dp).fillMaxWidth(0.6f)) {
-                Text(
-                    series.name, color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold,
-                    lineHeight = 34.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                )
+            Column(Modifier.padding(horizontal = 48.dp).fillMaxWidth(0.7f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    BackButton(onClick = { vm.back() })
+                    Spacer(Modifier.width(20.dp))
+                    Text(
+                        series.name, color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold,
+                        lineHeight = 34.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 Spacer(Modifier.height(8.dp))
                 val seasonsCount = d?.seasons?.size ?: 0
                 MetaLine(
@@ -350,7 +354,14 @@ fun MovieDetailScreen(vm: AppViewModel, movie: Movie, preloaded: MovieDetail? = 
             Modifier.fillMaxSize().padding(start = 48.dp, top = 56.dp, end = 48.dp).verticalScroll(rememberScrollState())
         ) {
             Column(Modifier.fillMaxWidth(0.6f)) {
-                Text(movie.name, color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 38.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    BackButton(onClick = { vm.back() })
+                    Spacer(Modifier.width(20.dp))
+                    Text(
+                        movie.name, color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.ExtraBold,
+                        lineHeight = 38.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 Spacer(Modifier.height(8.dp))
                 MetaLine(
                     year = d?.year ?: "",
