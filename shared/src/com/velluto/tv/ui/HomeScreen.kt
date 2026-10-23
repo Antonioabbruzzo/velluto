@@ -152,16 +152,16 @@ fun HomeScreen(vm: AppViewModel, catalog: Catalog) {
                 when (vm.section) {
                     Section.HOME -> rememberRows(catalog, lib, derived, suggestions) {
                         homeRows(vm, catalog, lib, derived, suggestions)
-                    }?.let { BrowseSection(vm, "home", it) } ?: LoadingRows()
+                    }?.let { NetflixBrowse(vm, "home", it) } ?: LoadingRows()
                     Section.FOR_YOU -> ForYouSection(vm, suggestions)
                     Section.SERIES -> rememberCachedRows(vm, "series", catalog) { seriesRows(vm, catalog) }?.let {
-                        BrowseSection(
+                        NetflixBrowse(
                             vm, "series", it,
                             header = { PageHeader("Serie TV", null, genresButton) { genrePicker = true } },
                         )
                     } ?: LoadingRows()
                     Section.MOVIES -> rememberCachedRows(vm, "movies", catalog) { movieRows(vm, catalog) }?.let {
-                        BrowseSection(
+                        NetflixBrowse(
                             vm, "movies", it,
                             header = { PageHeader("Film", null, genresButton) { genrePicker = false } },
                         )
@@ -490,76 +490,6 @@ private fun rememberHero(vm: AppViewModel, focused: RowItem?, fallback: RowItem?
     return current
 }
 
-@Composable
-private fun BrowseSection(
-    vm: AppViewModel,
-    sectionKey: String,
-    rows: List<BrowseRow>,
-    /** Intestazione sopra il banner (es. "Serie TV" + pulsante Generi). */
-    header: (@Composable () -> Unit)? = null,
-) {
-    val visibleRows = rows.filter { it.items.isNotEmpty() }
-    val savedId = vm.lastFocus[sectionKey]
-    val allIds = remember(visibleRows) { visibleRows.flatMap { r -> r.items.map { it.id } }.toSet() }
-    val focusId = savedId?.takeIf { it in allIds } ?: visibleRows.firstOrNull()?.items?.firstOrNull()?.id
-    var focused by remember { mutableStateOf<RowItem?>(null) }
-    var focusedRow by remember { mutableIntStateOf(-1) }
-    val fr = remember { FocusRequester() }
-    val listState = rememberLazyListState()
-    val hero = rememberHero(vm, focused, visibleRows.firstOrNull()?.items?.firstOrNull())
-
-    // La fila selezionata resta sempre in alto, nella stessa posizione.
-    LaunchedEffect(focusedRow) {
-        if (focusedRow >= 0) listState.animateScrollToItem(focusedRow)
-    }
-
-    if (visibleRows.isEmpty() || hero == null) {
-        EmptyMessage(
-            if (vm.loadingParts.isNotEmpty()) "Contenuti in arrivo dal provider…\nLa prima volta può richiedere qualche minuto."
-            else "Nessun contenuto disponibile"
-        )
-        return
-    }
-
-    Column(Modifier.fillMaxSize()) {
-        Box(Modifier.height(250.dp)) {
-            Hero(
-                hero.title,
-                Modifier.fillMaxSize(),
-                extraLine = hero.label,
-                extraFor = { vm.extras[it.key] },
-            )
-            header?.invoke()
-        }
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(bottom = 300.dp),
-        ) {
-            itemsIndexed(visibleRows) { rowIndex, row ->
-                ContentRow(
-                    title = row.title,
-                    items = row.items,
-                    onItemFocused = {
-                        focused = it
-                        focusedRow = rowIndex
-                        vm.lastFocus[sectionKey] = it.id
-                    },
-                    // Mouse sopra una card: aggiorna solo il banner (niente scorrimento della pagina).
-                    onItemHovered = { focused = it },
-                    focusId = focusId,
-                    focusRequester = fr,
-                    cardWidth = if (row.wide) 220.dp else 120.dp,
-                    aspect = if (row.wide) 16f / 9f else 2f / 3f,
-                    onOpenAll = row.openAll?.let { g -> { vm.openGenreEntry(g) } },
-                    totalCount = row.openAll?.titles?.size ?: row.items.size,
-                )
-            }
-        }
-    }
-    RequestFocus(fr, sectionKey)
-}
-
 /** Tutte le serie (o tutti i film) di un genere, in griglia, con il banner e la trama in alto. */
 @Composable
 private fun GenreSection(vm: AppViewModel, genre: GenreEntry, genresButton: FocusRequester, onChangeGenre: () -> Unit) {
@@ -628,7 +558,7 @@ private fun ForYouSection(vm: AppViewModel, suggestions: Suggestions?) {
             "Qui troverai i suggerimenti scelti per te.\nGuarda qualche serie o film, oppure aggiungili a \"La mia lista\"."
         )
         // "Per te" usa lo stile del nuovo Netflix (card che si allarga, trama sotto la fila).
-        else -> ForYouNetflixStyle(vm, r)
+        else -> NetflixBrowse(vm, "foryou", r)
     }
 }
 

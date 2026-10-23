@@ -171,66 +171,9 @@ fun ProgressBar(fraction: Float, modifier: Modifier = Modifier) {
     }
 }
 
-@Composable
-fun ContentRow(
-    title: String,
-    items: List<RowItem>,
-    onItemFocused: (RowItem) -> Unit,
-    focusId: String?,
-    focusRequester: FocusRequester,
-    cardWidth: Dp = 120.dp,
-    aspect: Float = 2f / 3f,
-    /** Mouse sopra una card: aggiorna solo il banner, senza far scorrere la pagina. */
-    onItemHovered: (RowItem) -> Unit = onItemFocused,
-    /** Apre la categoria completa (titolo cliccabile + card "Vedi tutti"). Null per file come "Novità". */
-    onOpenAll: (() -> Unit)? = null,
-    totalCount: Int = items.size,
-) {
-    val rowState = rememberLazyListState()
-    val scope = rememberCoroutineScope()
-    val rowInteraction = remember { MutableInteractionSource() }
-    val rowHovered by rowInteraction.collectIsHoveredAsState()
-
-    Column(Modifier.fillMaxWidth()) {
-        RowTitle(title, onOpenAll)
-        Box(Modifier.hoverable(rowInteraction)) {
-            LazyRow(
-                state = rowState,
-                contentPadding = PaddingValues(horizontal = 40.dp, vertical = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                itemsIndexed(items) { _, item ->
-                    PosterCard(
-                        item = item,
-                        onFocused = { onItemFocused(item) },
-                        onHovered = { onItemHovered(item) },
-                        width = cardWidth,
-                        aspect = aspect,
-                        focusRequester = if (item.id == focusId) focusRequester else null,
-                    )
-                }
-                if (onOpenAll != null) {
-                    item { SeeAllCard(totalCount, cardWidth, aspect, onOpenAll) }
-                }
-            }
-            // Col mouse (Windows) le file non si scorrono in orizzontale con la rotellina: frecce ai lati.
-            if (rowHovered) {
-                Box(Modifier.matchParentSize()) {
-                    RowArrow("‹", Modifier.align(Alignment.CenterStart)) {
-                        scope.launch { rowState.animateScrollBy(-900f) }
-                    }
-                    RowArrow("›", Modifier.align(Alignment.CenterEnd)) {
-                        scope.launch { rowState.animateScrollBy(900f) }
-                    }
-                }
-            }
-        }
-    }
-}
-
 /** Titolo della fila; se la fila è una categoria è cliccabile col mouse e mostra "Vedi tutti ›". */
 @Composable
-private fun RowTitle(title: String, onOpenAll: (() -> Unit)?) {
+internal fun RowTitle(title: String, onOpenAll: (() -> Unit)?) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     Row(
@@ -266,7 +209,7 @@ private fun RowTitle(title: String, onOpenAll: (() -> Unit)?) {
 
 /** Ultima card della fila: apre tutti i titoli della categoria (col telecomando: → fino in fondo e OK). */
 @Composable
-private fun SeeAllCard(total: Int, width: Dp, aspect: Float, onClick: () -> Unit) {
+internal fun SeeAllCard(total: Int, width: Dp, aspect: Float, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val focused = interaction.isHighlighted()
     val shape = RoundedCornerShape(6.dp)
@@ -291,7 +234,7 @@ private fun SeeAllCard(total: Int, width: Dp, aspect: Float, onClick: () -> Unit
 
 /** Freccia per scorrere una fila col mouse (non selezionabile col telecomando). */
 @Composable
-private fun RowArrow(symbol: String, modifier: Modifier, onClick: () -> Unit) {
+internal fun RowArrow(symbol: String, modifier: Modifier, onClick: () -> Unit) {
     Box(
         modifier
             .padding(horizontal = 6.dp)
