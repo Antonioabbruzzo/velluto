@@ -403,10 +403,23 @@ class ScreenshotTest {
         press(Key.Enter)
         capture("21-categoria-completa")
         press(Key.DirectionUp) // dalla griglia ai pulsanti in alto
-        press(Key.DirectionLeft, 2) // fino a "← Indietro"
+        press(Key.DirectionLeft) // da "Generi" a "← Indietro"
         capture("22-categoria-indietro-selezionato")
         press(Key.Enter)
         capture("23-tornato-a-serie-tv")
+    }
+
+    @Test
+    fun seeAllFromRowTitle() {
+        vm.section = Section.SERIES
+        show { WithMenu { HomeScreen(vm, Fake.catalog) } }
+        press(Key.DirectionDown) // dalla fila "Novità" alla prima categoria
+        press(Key.DirectionRight, 2) // la card selezionata resta ferma a sinistra, scorre la fila
+        capture("24-card-ferma-a-sinistra")
+        press(Key.DirectionUp) // dalla fila al suo "Vedi tutti ›"
+        capture("25-vedi-tutti-dal-titolo")
+        press(Key.Enter)
+        capture("26-categoria-dal-titolo")
     }
 
     @Test

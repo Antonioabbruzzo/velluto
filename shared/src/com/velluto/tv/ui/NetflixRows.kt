@@ -206,7 +206,7 @@ private fun NetflixRow(
     val openAll = row.openAll
 
     Column(Modifier.fillMaxWidth()) {
-        RowTitle(row.title, openAll?.let { g -> { vm.openGenreEntry(g) } })
+        RowTitle(row.title, openAll?.let { g -> { vm.openGenreEntry(g) } }, selectable = isActive)
         Box(Modifier.hoverable(rowInteraction)) {
             LazyRow(
                 state = rowState,

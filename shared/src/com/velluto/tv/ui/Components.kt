@@ -44,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
@@ -171,37 +172,46 @@ fun ProgressBar(fraction: Float, modifier: Modifier = Modifier) {
     }
 }
 
-/** Titolo della fila; se la fila è una categoria è cliccabile col mouse e mostra "Vedi tutti ›". */
+/**
+ * Titolo della fila; se la fila è una categoria c'è "Vedi tutti ›": cliccabile col mouse e,
+ * col telecomando, selezionabile con ↑ dalla fila in cui sei ([selectable] = fila attiva).
+ * Le altre file non lo rendono selezionabile, così scendendo con ↓ si va dritti alle card.
+ */
 @Composable
-internal fun RowTitle(title: String, onOpenAll: (() -> Unit)?) {
-    val interaction = remember { MutableInteractionSource() }
-    val hovered by interaction.collectIsHoveredAsState()
+internal fun RowTitle(title: String, onOpenAll: (() -> Unit)?, selectable: Boolean = true) {
+    val titleInteraction = remember { MutableInteractionSource() }
+    val titleHovered by titleInteraction.collectIsHoveredAsState()
     Row(
-        Modifier
-            .padding(start = 40.dp, top = 6.dp)
-            .then(
-                if (onOpenAll != null) {
-                    Modifier
-                        .hoverable(interaction)
-                        // Solo clic (mouse): col telecomando si usa la card "Vedi tutti" in fondo alla fila.
-                        .pointerInput(onOpenAll) { detectTapGestures { onOpenAll() } }
-                } else Modifier
-            ),
+        Modifier.padding(start = 40.dp, top = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             title,
-            color = if (hovered) Color.White else Palette.Text,
+            modifier = if (onOpenAll != null) {
+                Modifier
+                    .hoverable(titleInteraction)
+                    .pointerInput(onOpenAll) { detectTapGestures { onOpenAll() } }
+            } else Modifier,
+            color = if (titleHovered) Color.White else Palette.Text,
             fontSize = 17.sp,
             fontWeight = FontWeight.Bold,
         )
         if (onOpenAll != null) {
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(10.dp))
+            val interaction = remember { MutableInteractionSource() }
+            val highlighted = interaction.isHighlighted() || titleHovered
             Text(
                 "Vedi tutti  ›",
-                color = if (hovered) Color.White else Palette.TextDim,
+                modifier = Modifier
+                    .focusProperties { canFocus = selectable }
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(if (highlighted) Color.White else Color.Transparent)
+                    .hoverable(interaction)
+                    .clickable(interactionSource = interaction, indication = null, onClick = onOpenAll)
+                    .padding(horizontal = 10.dp, vertical = 3.dp),
+                color = if (highlighted) Color.Black else Palette.TextDim,
                 fontSize = 13.sp,
-                fontWeight = if (hovered) FontWeight.Bold else FontWeight.Normal,
+                fontWeight = if (highlighted) FontWeight.Bold else FontWeight.Normal,
             )
         }
     }
