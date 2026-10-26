@@ -90,15 +90,19 @@ fun LiveSection(vm: AppViewModel, catalog: Catalog) {
                     text = c.name,
                     selected = c.id == selectedCat && !searching,
                     onFocused = {
-                        selectedCat = c.id
-                        vm.lastFocus["live-cat"] = c.id
-                        // Spostandosi sulle categorie si esce dalla ricerca.
-                        if (query.isNotEmpty()) {
-                            query = ""
-                            vm.lastFocus["live-query"] = ""
+                        // Durante una ricerca passare sulle categorie non cambia l'elenco dei risultati.
+                        if (!searching) {
+                            selectedCat = c.id
+                            vm.lastFocus["live-cat"] = c.id
                         }
                     },
-                    onClick = { selectedCat = c.id },
+                    onClick = {
+                        // OK su una categoria chiude la ricerca e mostra i canali di quella categoria.
+                        query = ""
+                        vm.lastFocus["live-query"] = ""
+                        selectedCat = c.id
+                        vm.lastFocus["live-cat"] = c.id
+                    },
                     focusRequester = if (c.id == selectedCat) catFr else null,
                 )
             }
