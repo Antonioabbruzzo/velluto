@@ -37,7 +37,10 @@ class PlatformServices(
     val updater: Updater,
     val dataDir: File,
     val versionName: String,
-)
+) {
+    /** Attiva/disattiva lo schermo intero della finestra (solo Windows; null sulla Fire TV). */
+    var toggleFullscreen: (() -> Unit)? = null
+}
 
 /** Il player video: ExoPlayer sulla Fire TV, VLC su Windows. */
 interface VideoEngine {
@@ -45,6 +48,9 @@ interface VideoEngine {
     val durationMs: Long
     val isPlaying: Boolean
     var listener: Listener?
+
+    /** Volume del player, da 0 (muto) a 1 (massimo). Sulla Fire TV si somma al volume del televisore. */
+    var volume: Float
 
     fun load(url: String, startMs: Long)
     fun play()

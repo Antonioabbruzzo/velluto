@@ -218,6 +218,8 @@ class VlcEngine : VideoEngine {
         player.videoSurface().set(factory.videoSurfaces().newVideoSurface(formatCallback, renderCallback, true))
         player.events().addMediaPlayerEventListener(object : MediaPlayerEventAdapter() {
             override fun playing(mediaPlayer: MediaPlayer) = ui {
+                // VLC applica il volume solo con l'audio avviato: lo reimpostiamo a ogni nuovo contenuto.
+                player.audio().setVolume((volume * 100).toInt())
                 listener?.onBufferingChanged(false)
                 listener?.onPlayingChanged(true)
             }
@@ -245,6 +247,11 @@ class VlcEngine : VideoEngine {
     override val positionMs: Long get() = if (released) 0 else player.status().time().coerceAtLeast(0)
     override val durationMs: Long get() = if (released) 0 else player.status().length().coerceAtLeast(0)
     override val isPlaying: Boolean get() = !released && player.status().isPlaying
+    override var volume: Float = 1f
+        set(value) {
+            field = value.coerceIn(0f, 1f)
+            if (!released) player.audio().setVolume((field * 100).toInt())
+        }
 
     override fun load(url: String, startMs: Long) {
         val options = mutableListOf(":http-user-agent=${XtreamClient.USER_AGENT}", ":network-caching=1500")
@@ -296,6 +303,7 @@ private class MissingVlcEngine(private val reason: String) : VideoEngine {
     override val positionMs = 0L
     override val durationMs = 0L
     override val isPlaying = false
+    override var volume = 1f
     override fun load(url: String, startMs: Long) {
         listener?.onBufferingChanged(false)
         listener?.onError("installa VLC 64-bit da videolan.org e riapri Velluto · $reason")

@@ -55,6 +55,11 @@ class ExoEngine(val player: ExoPlayer) : VideoEngine {
     override val positionMs: Long get() = player.currentPosition
     override val durationMs: Long get() = player.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: 0L
     override val isPlaying: Boolean get() = player.isPlaying
+    override var volume: Float
+        get() = player.volume
+        set(value) {
+            player.volume = value.coerceIn(0f, 1f)
+        }
 
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {

@@ -410,6 +410,45 @@ class ScreenshotTest {
     }
 
     @Test
+    fun liveSearch() {
+        vm.section = Section.LIVE
+        vm.lastFocus["live-query"] = "rete"
+        show { WithMenu { HomeScreen(vm, Fake.catalog) } }
+        capture("27-ricerca-canali")
+    }
+
+    @Test
+    fun liveControls() {
+        show {
+            Box(Modifier.fillMaxSize()) {
+                Image(
+                    bitmap = Fake.backdropBitmap(11, 1280, 720).asImageBitmap(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                PlayerOverlay(
+                    req = PlayRequest.Live(Fake.catalog.live, 2),
+                    isPlaying = true,
+                    positionMs = 0,
+                    durationMs = 0,
+                    epg = emptyList(),
+                    error = null,
+                    controls = listOf(
+                        PlayerControl("⏮", "Canale prec.", true) {},
+                        PlayerControl("−", "", true) {},
+                        PlayerControl("", "Muto", true) {},
+                        PlayerControl("+", "", true) {},
+                        PlayerControl("⏭", "Canale succ.", true) {},
+                    ),
+                    selectedControl = 4,
+                )
+            }
+        }
+        capture("28-diretta-controlli")
+    }
+
+    @Test
     fun seeAllFromRowTitle() {
         vm.section = Section.SERIES
         show { WithMenu { HomeScreen(vm, Fake.catalog) } }

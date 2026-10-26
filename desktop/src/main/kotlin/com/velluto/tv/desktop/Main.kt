@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -47,6 +48,15 @@ fun main() = application {
         windowState.placement =
             if (windowState.placement == WindowPlacement.Fullscreen) WindowPlacement.Floating
             else WindowPlacement.Fullscreen
+    }
+    // Il player (doppio clic, tasto F, pulsante "Schermo intero") usa la stessa funzione.
+    vm.platform.toggleFullscreen = { toggleFullscreen() }
+
+    // Il pulsante "ingrandisci" (□) della finestra porta direttamente a schermo intero, come una TV.
+    LaunchedEffect(windowState.placement) {
+        if (windowState.placement == WindowPlacement.Maximized) {
+            windowState.placement = WindowPlacement.Fullscreen
+        }
     }
 
     Window(

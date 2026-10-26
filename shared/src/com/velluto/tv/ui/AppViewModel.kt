@@ -372,6 +372,10 @@ class AppViewModel(val platform: PlatformServices) {
         }
     }
 
+    /** Volume del player (0..1) e muto: restano uguali cambiando canale o episodio. */
+    var playerVolume = 1f
+    var playerMuted = false
+
     /** Sezione a cui tornare con Indietro da una pagina di genere/categoria. */
     var genreReturnSection: Section = Section.SERIES
 

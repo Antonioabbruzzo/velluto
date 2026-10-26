@@ -26,6 +26,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,6 +55,7 @@ import com.velluto.tv.platform.VideoEngine
 import com.velluto.tv.platform.VideoSurface
 import com.velluto.tv.platform.rememberVideoEngine
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 
 private const val NEXT_EPISODE_COUNTDOWN = 10
 private const val NEAR_END_MS = 45_000L
@@ -76,6 +78,34 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
     var epg by remember { mutableStateOf<List<EpgEntry>>(emptyList()) }
     var loadedAt by remember { mutableLongStateOf(0L) }
     val fr = remember { FocusRequester() }
+
+    // Volume: resta uguale cambiando canale o episodio (lo ricorda il ViewModel).
+    var volume by remember { mutableFloatStateOf(vm.playerVolume) }
+    var muted by remember { mutableStateOf(vm.playerMuted) }
+    var volumeShownAt by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(engine) { engine.volume = if (muted) 0f else volume }
+    LaunchedEffect(volumeShownAt) {
+        if (volumeShownAt > 0) {
+            delay(1_500)
+            volumeShownAt = 0L
+        }
+    }
+
+    fun applyVolume(v: Float, mute: Boolean) {
+        volume = v.coerceIn(0f, 1f)
+        muted = mute
+        vm.playerVolume = volume
+        vm.playerMuted = mute
+        engine.volume = if (mute) 0f else volume
+        volumeShownAt = System.currentTimeMillis()
+    }
+
+    fun volumeUp() = applyVolume(((volume * 10).roundToInt() + 1) / 10f, mute = false)
+    fun volumeDown() = applyVolume(((volume * 10).roundToInt() - 1) / 10f, mute = false)
+    fun toggleMute() = applyVolume(volume, mute = !muted)
+    fun toggleFullscreen() {
+        vm.platform.toggleFullscreen?.invoke()
+    }
 
     fun hasNext(r: PlayRequest) = r is PlayRequest.EpisodeReq && r.index + 1 < r.episodes.size
 
@@ -267,23 +297,40 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
         showOverlay()
     }
 
-    val controls: List<PlayerControl> = if (r is PlayRequest.Live) emptyList() else buildList {
-        val episode = r as? PlayRequest.EpisodeReq
-        if (episode != null) {
-            add(PlayerControl("⏮", "Precedente", episode.index > 0) { goToEpisode(-1, finished = false) })
+    // Barra dei controlli: in diretta canale precedente/successivo e volume; per film e serie anche
+    // ±10 s, pausa ed episodio precedente/successivo. Su Windows anche "Schermo intero".
+    val controls: List<PlayerControl> = buildList {
+        if (r is PlayRequest.Live) {
+            add(PlayerControl("⏮", "Canale prec.", r.channels.size > 1) { zap(-1) })
+        } else {
+            val episode = r as? PlayRequest.EpisodeReq
+            if (episode != null) {
+                add(PlayerControl("⏮", "Prec.", episode.index > 0) { goToEpisode(-1, finished = false) })
+            }
+            add(PlayerControl("«", "10 s", true) { seekBy(-10_000) })
+            add(PlayerControl(if (isPlaying) "❚❚" else "▶", if (isPlaying) "Pausa" else "Riproduci", true) { togglePlay() })
+            add(PlayerControl("»", "10 s", true) { seekBy(10_000) })
+            if (episode != null) {
+                add(PlayerControl("⏭", "Succ.", hasNext(episode)) { goToEpisode(+1, finished = false) })
+            }
         }
-        add(PlayerControl("«", "10 s", true) { seekBy(-10_000) })
-        add(PlayerControl(if (isPlaying) "❚❚" else "▶", if (isPlaying) "Pausa" else "Riproduci", true) { togglePlay() })
-        add(PlayerControl("»", "10 s", true) { seekBy(10_000) })
-        if (episode != null) {
-            add(PlayerControl("⏭", "Successivo", hasNext(episode)) { goToEpisode(+1, finished = false) })
+        add(PlayerControl("−", "", true) { volumeDown() })
+        add(PlayerControl("", if (muted) "Audio" else "Muto", true) { toggleMute() })
+        add(PlayerControl("+", "", true) { volumeUp() })
+        if (r is PlayRequest.Live) {
+            add(PlayerControl("⏭", "Canale succ.", r.channels.size > 1) { zap(+1) })
+        }
+        if (vm.platform.toggleFullscreen != null) {
+            add(PlayerControl("□", "Schermo intero", true) { toggleFullscreen() })
         }
     }
-    val playControlIndex = controls.indexOfFirst { it.label == "Pausa" || it.label == "Riproduci" }
+    // Aprendo la barra si parte da Pausa (film/serie) o da Muto (diretta).
+    val defaultControl = controls.indexOfFirst { it.label == "Pausa" || it.label == "Riproduci" }
+        .takeIf { it >= 0 } ?: controls.indexOfFirst { it.label == "Muto" || it.label == "Audio" }
 
     fun openControls() {
         controlsMode = true
-        selectedControl = playControlIndex.coerceAtLeast(0)
+        selectedControl = defaultControl.coerceAtLeast(0)
         showOverlay()
     }
 
@@ -319,9 +366,14 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
         when (key) {
             Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> when {
                 countdown != null || nearEnd -> goNext()
-                r is PlayRequest.Live -> showOverlay()
+                r is PlayRequest.Live -> openControls() // in diretta OK apre canali e volume
                 else -> togglePlay()
             }
+            // Tastiera del PC: + / − volume, M muto, F schermo intero.
+            Key.Plus, Key.Equals, Key.NumPadAdd -> volumeUp()
+            Key.Minus, Key.NumPadSubtract -> volumeDown()
+            Key.M -> toggleMute()
+            Key.F -> toggleFullscreen()
             Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause, Key.Spacebar -> togglePlay()
             Key.DirectionLeft, Key.MediaRewind -> if (r is PlayRequest.Live) showOverlay() else seekBy(-step)
             Key.DirectionRight, Key.MediaFastForward -> if (r is PlayRequest.Live) showOverlay() else seekBy(step)
@@ -339,9 +391,12 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
         Modifier
             .fillMaxSize()
             .background(Color.Black)
-            // Col mouse (Windows): un clic sul video mostra i controlli.
+            // Col mouse (Windows): un clic sul video mostra i controlli, doppio clic = schermo intero.
             .pointerInput(r is PlayRequest.Live) {
-                detectTapGestures { if (r is PlayRequest.Live) showOverlay() else openControls() }
+                detectTapGestures(
+                    onDoubleTap = { toggleFullscreen() },
+                    onTap = { openControls() },
+                )
             }
             .onKeyEvent { e ->
                 when (e.type) {
@@ -394,6 +449,25 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
 
         if (nearEnd) {
             Pill("▶  Premi OK per il prossimo episodio", Modifier.align(Alignment.BottomEnd).padding(40.dp))
+        }
+
+        // Indicazione del volume quando lo cambi.
+        if (volumeShownAt > 0) {
+            Box(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(32.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color.Black.copy(alpha = 0.8f))
+                    .padding(horizontal = 18.dp, vertical = 10.dp),
+            ) {
+                Text(
+                    if (muted) "Audio disattivato" else "Volume ${(volume * 100).roundToInt()}%",
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
         }
 
         countdown?.let { c ->
@@ -459,12 +533,17 @@ private fun ControlButton(control: PlayerControl, selected: Boolean, onClick: ()
             .clip(RoundedCornerShape(22.dp))
             .background(bg)
             .clickable(enabled = control.enabled, onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(control.symbol, color = fg, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.width(8.dp))
-        Text(control.label, color = fg, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        // Pulsanti compatti: solo simbolo (es. volume − / +) oppure solo testo (es. Muto).
+        if (control.symbol.isNotEmpty()) {
+            Text(control.symbol, color = fg, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        }
+        if (control.symbol.isNotEmpty() && control.label.isNotEmpty()) Spacer(Modifier.width(8.dp))
+        if (control.label.isNotEmpty()) {
+            Text(control.label, color = fg, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        }
     }
 }
 
@@ -518,20 +597,25 @@ internal fun PlayerOverlay(
             }
         }
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 40.dp, vertical = 28.dp)) {
-            if (req is PlayRequest.Live) {
-                Text("▲ ▼  cambia canale", color = Palette.TextDim, fontSize = 13.sp)
-            } else {
-                if (controls.isNotEmpty()) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-                    ) {
-                        controls.forEachIndexed { i, c ->
-                            ControlButton(c, selected = i == selectedControl, onClick = { onControlClick(i) })
-                        }
+            if (controls.isNotEmpty()) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+                ) {
+                    controls.forEachIndexed { i, c ->
+                        ControlButton(c, selected = i == selectedControl, onClick = { onControlClick(i) })
                     }
-                    Spacer(Modifier.height(16.dp))
                 }
+                Spacer(Modifier.height(16.dp))
+            }
+            if (req is PlayRequest.Live) {
+                Text(
+                    if (selectedControl >= 0) "◀ ▶  scegli  ·  OK  conferma  ·  ▲  chiudi"
+                    else "▲ ▼  cambia canale  ·  OK  canali e volume",
+                    color = Palette.TextDim,
+                    fontSize = 13.sp,
+                )
+            } else {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     Text(formatTime(positionMs), color = Color.White, fontSize = 13.sp)
                     ProgressBar(

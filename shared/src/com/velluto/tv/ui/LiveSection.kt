@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -59,7 +61,14 @@ fun LiveSection(vm: AppViewModel, catalog: Catalog) {
     var selectedCat by remember {
         mutableStateOf(vm.lastFocus["live-cat"]?.takeIf { id -> cats.any { it.id == id } } ?: cats.first().id)
     }
-    val channels = catalog.liveByCategory[selectedCat].orEmpty()
+    // Ricerca: con almeno 2 lettere mostra i canali di tutte le categorie che corrispondono.
+    var query by remember { mutableStateOf(vm.lastFocus["live-query"] ?: "") }
+    val q = query.trim()
+    val searching = q.length >= 2
+    val results = remember(catalog, q) {
+        if (q.length < 2) emptyList() else catalog.live.filter { it.name.contains(q, ignoreCase = true) }
+    }
+    val channels = if (searching) results else catalog.liveByCategory[selectedCat].orEmpty()
     var focused by remember { mutableStateOf<LiveChannel?>(null) }
     var epg by remember { mutableStateOf<List<EpgEntry>>(emptyList()) }
     val catFr = remember { FocusRequester() }
@@ -79,26 +88,64 @@ fun LiveSection(vm: AppViewModel, catalog: Catalog) {
             itemsIndexed(cats) { _, c ->
                 ListEntry(
                     text = c.name,
-                    selected = c.id == selectedCat,
+                    selected = c.id == selectedCat && !searching,
                     onFocused = {
                         selectedCat = c.id
                         vm.lastFocus["live-cat"] = c.id
+                        // Spostandosi sulle categorie si esce dalla ricerca.
+                        if (query.isNotEmpty()) {
+                            query = ""
+                            vm.lastFocus["live-query"] = ""
+                        }
                     },
                     onClick = { selectedCat = c.id },
                     focusRequester = if (c.id == selectedCat) catFr else null,
                 )
             }
         }
-        LazyColumn(
-            Modifier.weight(1f).fillMaxHeight(),
-            contentPadding = PaddingValues(vertical = 8.dp, horizontal = 12.dp),
-        ) {
-            itemsIndexed(channels) { index, ch ->
-                ChannelEntry(
-                    channel = ch,
-                    onFocused = { focused = ch },
-                    onClick = { vm.navigate(Screen.Player(PlayRequest.Live(channels, index))) },
+        Column(Modifier.weight(1f).fillMaxHeight()) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = {
+                    query = it
+                    vm.lastFocus["live-query"] = it
+                },
+                singleLine = true,
+                label = { Text("Cerca canale") },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedBorderColor = Color.White,
+                    unfocusedBorderColor = Palette.TextDim,
+                    focusedLabelColor = Color.White,
+                    unfocusedLabelColor = Palette.TextDim,
+                    cursorColor = Palette.Accent,
+                ),
+                modifier = Modifier
+                    .padding(horizontal = 12.dp)
+                    .fillMaxWidth()
+                    .dpadVerticalFocus(),
+            )
+            if (searching) {
+                Text(
+                    if (results.isEmpty()) "Nessun canale trovato per \"$q\"" else "${results.size} canali trovati",
+                    modifier = Modifier.padding(start = 14.dp, top = 6.dp),
+                    color = Palette.TextDim,
+                    fontSize = 13.sp,
                 )
+            }
+            LazyColumn(
+                Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(vertical = 8.dp, horizontal = 12.dp),
+            ) {
+                itemsIndexed(channels) { index, ch ->
+                    ChannelEntry(
+                        channel = ch,
+                        onFocused = { focused = ch },
+                        // Nel player ▲▼ cambia canale all'interno di questo elenco (categoria o risultati).
+                        onClick = { vm.navigate(Screen.Player(PlayRequest.Live(channels, index))) },
+                    )
+                }
             }
         }
         Column(Modifier.width(300.dp).fillMaxHeight().padding(16.dp)) {
