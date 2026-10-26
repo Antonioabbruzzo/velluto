@@ -66,6 +66,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.velluto.tv.data.newest
 import com.velluto.tv.data.Catalog
 import com.velluto.tv.data.Category
 import com.velluto.tv.data.GenreEntry
@@ -653,14 +654,14 @@ private fun homeRows(
 
 private fun seriesRows(vm: AppViewModel, catalog: Catalog): List<BrowseRow> =
     listOf(
-        BrowseRow("Novità", titleItems(vm, "s-new", catalog.series.sortedByDescending { it.lastModified }, 40))
+        BrowseRow("Novità", titleItems(vm, "s-new", catalog.newest(catalog.series, 40) { it.lastModified }, 40))
     ) + catalog.seriesCategories.map { c ->
         categoryRow(vm, cleanCategoryName(c.name), "s-${c.id}", c, catalog.seriesByCategory[c.id].orEmpty(), isSeries = true)
     }
 
 private fun movieRows(vm: AppViewModel, catalog: Catalog): List<BrowseRow> =
     listOf(
-        BrowseRow("Novità", titleItems(vm, "m-new", catalog.movies.sortedByDescending { it.added }, 40))
+        BrowseRow("Novità", titleItems(vm, "m-new", catalog.newest(catalog.movies, 40) { it.added }, 40))
     ) + catalog.movieCategories.map { c ->
         categoryRow(vm, cleanCategoryName(c.name), "m-${c.id}", c, catalog.moviesByCategory[c.id].orEmpty(), isSeries = false)
     }

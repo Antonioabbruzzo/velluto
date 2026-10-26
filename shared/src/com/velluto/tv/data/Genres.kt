@@ -188,3 +188,15 @@ object Recommender {
         }
     }
 }
+
+/**
+ * I titoli più recenti, senza doppioni (lo stesso film caricato più volte dal provider) e senza
+ * contenuti per adulti: per le file "Novità".
+ */
+fun <T : Title> Catalog.newest(titles: List<T>, limit: Int, addedAt: (T) -> Long): List<T> =
+    titles.asSequence()
+        .filterNot { isAdult(it) }
+        .sortedByDescending(addedAt)
+        .distinctBy { it.key }
+        .take(limit)
+        .toList()

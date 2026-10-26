@@ -21,7 +21,7 @@ import com.velluto.tv.platform.UpdateInfo
 import androidx.compose.runtime.snapshotFlow
 import com.velluto.tv.data.CatalogCache
 import com.velluto.tv.data.Recommender
-import com.velluto.tv.data.isAdult
+import com.velluto.tv.data.newest
 import com.velluto.tv.data.buildGenreEntries
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -189,11 +189,8 @@ class AppViewModel(val platform: PlatformServices) {
                     c.liveByCategory
                     CatalogDerived(
                         catalog = c,
-                        // Le novità in Home non devono mostrare contenuti per adulti.
-                        recentSeries = c.series.asSequence().filterNot { c.isAdult(it) }
-                            .sortedByDescending { it.lastModified }.take(60).toList(),
-                        recentMovies = c.movies.asSequence().filterNot { c.isAdult(it) }
-                            .sortedByDescending { it.added }.take(60).toList(),
+                        recentSeries = c.newest(c.series, 60) { it.lastModified },
+                        recentMovies = c.newest(c.movies, 60) { it.added },
                         seriesGenres = buildGenreEntries(c, series = true),
                         movieGenres = buildGenreEntries(c, series = false),
                     )

@@ -46,6 +46,8 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -151,10 +153,24 @@ fun main() = application {
                             },
                         )
                     }
-                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                    // Posizione verticale del mouse, letta prima di qualsiasi schermata (passaggio Initial):
+                    // serve alla barra "Esci da schermo intero", qualunque cosa ci sia sotto il mouse.
+                    var pointerY by remember { mutableStateOf(Float.MAX_VALUE) }
+                    Box(
+                        Modifier.weight(1f).fillMaxWidth().pointerInput(Unit) {
+                            awaitPointerEventScope {
+                                while (true) {
+                                    val e = awaitPointerEvent(PointerEventPass.Initial)
+                                    pointerY = if (e.type == PointerEventType.Exit) Float.MAX_VALUE
+                                    else e.changes.firstOrNull()?.position?.y ?: pointerY
+                                }
+                            }
+                        },
+                    ) {
                         AppRoot(vm)
                         if (fullscreen) {
                             FullscreenExitBar(
+                                pointerY = pointerY,
                                 onExit = { windowState.placement = WindowPlacement.Floating },
                                 modifier = Modifier.align(Alignment.TopCenter),
                             )
@@ -210,24 +226,22 @@ private fun TitleButton(symbol: String, description: String, hoverColor: Color, 
  * alla finestra normale (come nei browser). Si richiude da sola quando il mouse si allontana.
  */
 @Composable
-private fun FullscreenExitBar(onExit: () -> Unit, modifier: Modifier) {
-    val edge = remember { MutableInteractionSource() }
-    val bar = remember { MutableInteractionSource() }
+private fun FullscreenExitBar(pointerY: Float, onExit: () -> Unit, modifier: Modifier) {
+    val density = LocalDensity.current
     val close = remember { MutableInteractionSource() }
-    val edgeHovered by edge.collectIsHoveredAsState()
-    val barHovered by bar.collectIsHoveredAsState()
     val closeHovered by close.collectIsHoveredAsState()
     var visible by remember { mutableStateOf(false) }
-    LaunchedEffect(edgeHovered, barHovered) {
-        if (edgeHovered || barHovered) visible = true
-        else {
-            delay(900)
+    // Si apre col mouse negli ultimi pixel in alto; resta aperta finché il mouse è sulla barra.
+    val atEdge = with(density) { pointerY <= 12.dp.toPx() }
+    val onBar = with(density) { pointerY <= 80.dp.toPx() }
+    LaunchedEffect(atEdge, onBar) {
+        if (atEdge) visible = true
+        else if (!onBar) {
+            delay(600)
             visible = false
         }
     }
     Box(modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
-        // Striscia invisibile sul bordo superiore che "sente" il mouse.
-        Box(Modifier.fillMaxWidth().height(6.dp).hoverable(edge))
         AnimatedVisibility(
             visible = visible,
             enter = slideInVertically { -it } + fadeIn(),
@@ -240,7 +254,6 @@ private fun FullscreenExitBar(onExit: () -> Unit, modifier: Modifier) {
                     .clip(RoundedCornerShape(28.dp))
                     .background(Color(0xE6141418))
                     .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(28.dp))
-                    .hoverable(bar)
                     .padding(start = 22.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
