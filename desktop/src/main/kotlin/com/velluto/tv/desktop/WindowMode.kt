@@ -39,27 +39,27 @@ internal class WindowMode(private val state: WindowState) {
 
     fun toggleFullscreen() {
         autoFullscreen = false
-        setFullscreen(!fullscreen)
+        applyFullscreen(!fullscreen)
     }
 
     fun exitFullscreen() {
         autoFullscreen = false
-        setFullscreen(false)
+        applyFullscreen(false)
     }
 
     fun enterAutoFullscreen() {
         if (fullscreen) return
         autoFullscreen = true
-        setFullscreen(true)
+        applyFullscreen(true)
     }
 
     fun leaveAutoFullscreen() {
         if (!autoFullscreen) return
         autoFullscreen = false
-        setFullscreen(false)
+        applyFullscreen(false)
     }
 
-    private fun setFullscreen(on: Boolean) {
+    private fun applyFullscreen(on: Boolean) {
         if (on == fullscreen) return
         val f = frame ?: return
         val hwnd = Win32.hwnd(f)
