@@ -1,5 +1,18 @@
 package com.velluto.tv.ui
 
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.shadow
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -115,18 +128,18 @@ fun PosterCard(
     // Il passaggio del mouse è separato dalla selezione col telecomando: non deve far scorrere la pagina.
     val hovered by interaction.collectIsHoveredAsState()
     LaunchedEffect(hovered) { if (hovered) (onHovered ?: onFocused)() }
-    val shape = RoundedCornerShape(6.dp)
+    val shape = RoundedCornerShape(10.dp)
 
-    // Nessun ingrandimento: la card selezionata ha solo un bordo bianco, così niente si sposta.
+    // Nessun ingrandimento: la card selezionata ha un bordo bianco e un bagliore, così niente si sposta.
     Box(
         modifier
             .width(width)
             .aspectRatio(aspect)
             .optionalFocusRequester(focusRequester)
             .onFocusChanged { if (it.isFocused) onFocused() }
+            .focusRing(focused, shape)
             .clip(shape)
-            .background(Palette.Surface)
-            .border(3.dp, if (focused) Color.White else Color.Transparent, shape)
+            .background(CardPlaceholder)
             .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = item.onClick),
     ) {
@@ -167,8 +180,11 @@ fun PosterCard(
 
 @Composable
 fun ProgressBar(fraction: Float, modifier: Modifier = Modifier) {
-    Box(modifier.height(4.dp).background(Color(0x66FFFFFF))) {
-        Box(Modifier.fillMaxHeight().fillMaxWidth(fraction.coerceIn(0f, 1f)).background(Palette.Accent))
+    Box(modifier.height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x55FFFFFF))) {
+        Box(
+            Modifier.fillMaxHeight().fillMaxWidth(fraction.coerceIn(0f, 1f))
+                .clip(RoundedCornerShape(2.dp)).background(AccentGradient)
+        )
     }
 }
 
@@ -185,6 +201,8 @@ internal fun RowTitle(title: String, onOpenAll: (() -> Unit)?, selectable: Boole
         Modifier.padding(start = 40.dp, top = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Box(Modifier.size(width = 4.dp, height = 18.dp).clip(RoundedCornerShape(2.dp)).background(AccentGradient))
+        Spacer(Modifier.width(10.dp))
         Text(
             title,
             modifier = if (onOpenAll != null) {
@@ -205,7 +223,8 @@ internal fun RowTitle(title: String, onOpenAll: (() -> Unit)?, selectable: Boole
                 modifier = Modifier
                     .focusProperties { canFocus = selectable }
                     .clip(RoundedCornerShape(14.dp))
-                    .background(if (highlighted) Color.White else Color.Transparent)
+                    .background(if (highlighted) Color.White else Palette.Glass)
+                    .border(1.dp, if (highlighted) Color.White else Palette.Stroke, RoundedCornerShape(14.dp))
                     .hoverable(interaction)
                     .clickable(interactionSource = interaction, indication = null, onClick = onOpenAll)
                     .padding(horizontal = 10.dp, vertical = 3.dp),
@@ -222,14 +241,15 @@ internal fun RowTitle(title: String, onOpenAll: (() -> Unit)?, selectable: Boole
 internal fun SeeAllCard(total: Int, width: Dp, aspect: Float, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val focused = interaction.isHighlighted()
-    val shape = RoundedCornerShape(6.dp)
+    val shape = RoundedCornerShape(10.dp)
     Box(
         Modifier
             .width(width)
             .aspectRatio(aspect)
+            .focusRing(focused, shape)
             .clip(shape)
-            .background(if (focused) Color.White else Palette.SurfaceHigh)
-            .border(3.dp, if (focused) Color.White else Color.Transparent, shape)
+            .background(if (focused) SolidColor(Color.White) else CardPlaceholder)
+            .border(1.dp, Palette.Stroke, shape)
             .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -249,8 +269,9 @@ internal fun RowArrow(symbol: String, modifier: Modifier, onClick: () -> Unit) {
         modifier
             .padding(horizontal = 6.dp)
             .size(width = 44.dp, height = 96.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color.Black.copy(alpha = 0.7f))
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.Black.copy(alpha = 0.6f))
+            .border(1.dp, Palette.Stroke, RoundedCornerShape(12.dp))
             .pointerInput(Unit) { detectTapGestures { onClick() } },
         contentAlignment = Alignment.Center,
     ) {
@@ -277,6 +298,14 @@ fun Hero(
         modifier = modifier.fillMaxWidth(),
         label = "hero",
     ) { (t, extra) ->
+        // Lo sfondo si avvicina lentissimamente: la pagina sembra viva anche da ferma.
+        val drift = rememberInfiniteTransition(label = "heroDrift")
+        val zoom by drift.animateFloat(
+            initialValue = 1f,
+            targetValue = 1.07f,
+            animationSpec = infiniteRepeatable(tween(18_000, easing = LinearEasing), RepeatMode.Reverse),
+            label = "heroZoom",
+        )
         Box(Modifier.fillMaxSize()) {
             if (t != null) {
                 RemoteImage(
@@ -284,19 +313,24 @@ fun Hero(
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     alignment = Alignment.TopCenter,
-                    modifier = Modifier.fillMaxSize().graphicsLayer { alpha = 0.75f },
+                    modifier = Modifier.fillMaxSize().graphicsLayer {
+                        alpha = 0.8f
+                        scaleX = zoom
+                        scaleY = zoom
+                        transformOrigin = TransformOrigin(0.7f, 0.3f)
+                    },
                 )
             }
             Box(
                 Modifier.fillMaxSize().background(
                     Brush.horizontalGradient(
-                        0f to Palette.Background, 0.45f to Palette.Background.copy(alpha = 0.6f), 1f to Color.Transparent,
+                        0f to Palette.Background, 0.4f to Palette.Background.copy(alpha = 0.65f), 1f to Color.Transparent,
                     )
                 )
             )
             Box(
                 Modifier.fillMaxSize().background(
-                    Brush.verticalGradient(0.55f to Color.Transparent, 1f to Palette.Background)
+                    Brush.verticalGradient(0f to Palette.Background.copy(alpha = 0.35f), 0.25f to Color.Transparent, 0.55f to Color.Transparent, 1f to Palette.Background)
                 )
             )
             if (t != null) {
@@ -317,11 +351,12 @@ fun Hero(
                     Text(
                         t.name,
                         color = Color.White,
-                        fontSize = 30.sp,
+                        fontSize = 32.sp,
                         fontWeight = FontWeight.ExtraBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         lineHeight = 36.sp,
+                        style = TextStyle(shadow = Shadow(Color.Black.copy(alpha = 0.7f), Offset(0f, 2f), 12f)),
                     )
                     Spacer(Modifier.height(4.dp))
                     MetaLine(year = t.year.ifBlank { more?.year.orEmpty() }, rating = t.rating, extra = meta)
@@ -370,17 +405,22 @@ fun TvButton(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused = interaction.isHighlighted()
-    val bg = when {
-        focused -> Color.White
-        primary -> Color.White.copy(alpha = 0.25f)
-        else -> Color.White.copy(alpha = 0.12f)
-    }
-    val fg = if (focused) Color.Black else Color.White
+    val shape = RoundedCornerShape(10.dp)
+    // Il principale (Riproduci) è rosso; selezionato qualsiasi pulsante diventa bianco.
+    val whiteness by animateFloatAsState(if (focused) 1f else 0f, tween(FOCUS_ANIM_MS), label = "btn")
+    val fg = lerp(Color.White, Color.Black, whiteness)
     Row(
         modifier
             .optionalFocusRequester(focusRequester)
-            .clip(RoundedCornerShape(6.dp))
-            .background(bg)
+            .shadow(
+                if (focused) 16.dp else if (primary) 8.dp else 0.dp, shape, clip = false,
+                ambientColor = if (focused) Color.White else Palette.Accent,
+                spotColor = if (focused) Color.White else Palette.Accent,
+            )
+            .clip(shape)
+            .background(if (primary) AccentGradient else SolidColor(Color.White.copy(alpha = 0.1f)))
+            .background(Color.White.copy(alpha = whiteness))
+            .border(1.dp, if (primary || focused) Color.Transparent else Palette.Stroke, shape)
             .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 18.dp, vertical = 10.dp),
@@ -390,9 +430,12 @@ fun TvButton(
             Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
         }
-        Text(text, color = fg, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        Text(text, color = fg, fontSize = 15.sp, fontWeight = FontWeight.Bold)
     }
 }
+
+/** Sfondo delle card mentre l'immagine carica: una sfumatura invece del grigio piatto. */
+internal val CardPlaceholder = Brush.verticalGradient(listOf(Color(0xFF24242E), Color(0xFF14141A)))
 
 @Composable
 fun WatchedBadge(modifier: Modifier = Modifier) {

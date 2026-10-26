@@ -13,6 +13,7 @@ import com.velluto.tv.platform.PlatformBackHandler
 @Composable
 fun AppRoot(vm: AppViewModel) {
     val catalog = vm.catalog
+    Box(Modifier.fillMaxSize().vellutoBackdrop()) {
     when {
         vm.account == null -> LoginScreen(vm)
         catalog == null -> LoadingScreen(vm)
@@ -40,5 +41,6 @@ fun AppRoot(vm: AppViewModel) {
                 }
             }
         }
+    }
     }
 }

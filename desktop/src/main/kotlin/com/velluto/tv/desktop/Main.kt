@@ -41,6 +41,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusManager
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -67,9 +68,15 @@ import com.velluto.tv.platform.LocalBackDispatcher
 import com.velluto.tv.platform.desktopServices
 import com.velluto.tv.ui.AppRoot
 import com.velluto.tv.ui.AppViewModel
+import com.velluto.tv.ui.PlayerIcon
+import com.velluto.tv.ui.PlayerIconView
+import com.velluto.tv.ui.Screen
 import com.velluto.tv.ui.Palette
 import com.velluto.tv.ui.VellutoTheme
 import kotlinx.coroutines.delay
+import java.awt.GraphicsEnvironment
+import java.awt.Rectangle
+import java.awt.Toolkit
 
 private class FocusHolder {
     var manager: FocusManager? = null
@@ -87,19 +94,22 @@ fun main() = application {
         position = WindowPosition(Alignment.Center),
     )
 
-    fun toggleFullscreen() {
-        windowState.placement =
-            if (windowState.placement == WindowPlacement.Fullscreen) WindowPlacement.Floating
-            else WindowPlacement.Fullscreen
-    }
+    val mode = remember { WindowMode(windowState) }
+    fun toggleFullscreen() = mode.toggleFullscreen()
     // Il player (doppio clic, tasto F, pulsante "Schermo intero") usa la stessa funzione.
     vm.platform.toggleFullscreen = { toggleFullscreen() }
 
-    // "Ingrandisci" (anche con Win+↑) porta direttamente a schermo intero, come una TV.
+    // "Ingrandisci" di Windows (anche Win+↑) diventa il nostro "finestra piena", che lascia
+    // visibile la barra delle applicazioni.
     LaunchedEffect(windowState.placement) {
-        if (windowState.placement == WindowPlacement.Maximized) {
-            windowState.placement = WindowPlacement.Fullscreen
-        }
+        if (windowState.placement == WindowPlacement.Maximized) mode.maximize()
+    }
+
+    // Film, serie e canali partono a schermo intero; uscendo dal player si torna com'eri.
+    // Se nel frattempo lo schermo intero l'hai tolto o messo tu, si rispetta la tua scelta.
+    val inPlayer = vm.backStack.lastOrNull() is Screen.Player
+    LaunchedEffect(inPlayer) {
+        if (inPlayer) mode.enterAutoFullscreen() else mode.leaveAutoFullscreen()
     }
 
     Window(
@@ -124,8 +134,8 @@ fun main() = application {
                 }
                 Key.Escape, Key.Backspace -> {
                     if (back.dispatch()) true
-                    else if (windowState.placement == WindowPlacement.Fullscreen) {
-                        windowState.placement = WindowPlacement.Floating
+                    else if (mode.fullscreen) {
+                        mode.exitFullscreen()
                         true
                     } else false
                 }
@@ -138,14 +148,19 @@ fun main() = application {
         },
     ) {
         val fm = LocalFocusManager.current
-        SideEffect { focus.manager = fm }
+        SideEffect {
+            focus.manager = fm
+            mode.awtWindow = window
+        }
         val fullscreen = windowState.placement == WindowPlacement.Fullscreen
         CompositionLocalProvider(LocalBackDispatcher provides back) {
             VellutoTheme {
                 Column(Modifier.fillMaxSize().background(Palette.Background)) {
                     if (!fullscreen) {
                         TitleBar(
+                            maximized = mode.maximized,
                             onMinimize = { windowState.isMinimized = true },
+                            onMaximize = { mode.toggleMaximize() },
                             onFullscreen = { toggleFullscreen() },
                             onClose = {
                                 vm.dispose()
@@ -171,10 +186,10 @@ fun main() = application {
                         if (fullscreen) {
                             FullscreenExitBar(
                                 pointerY = pointerY,
-                                onExit = { windowState.placement = WindowPlacement.Floating },
+                                onExit = { mode.exitFullscreen() },
                                 modifier = Modifier.align(Alignment.TopCenter),
                             )
-                        } else {
+                        } else if (!mode.maximized) {
                             ResizeGrip(windowState, Modifier.align(Alignment.BottomEnd))
                         }
                     }
@@ -184,28 +199,125 @@ fun main() = application {
     }
 }
 
-/** Barra del titolo di Velluto: si trascina per spostare la finestra. */
+/**
+ * Gestione della finestra senza cornice: "finestra piena" fatta a mano (quella di Windows, senza
+ * cornice, coprirebbe anche la barra delle applicazioni) e schermo intero automatico nel player.
+ */
+private class WindowMode(private val state: WindowState) {
+    var awtWindow: java.awt.Window? = null
+    var maximized by mutableStateOf(false)
+        private set
+    private var restore: Pair<WindowPosition, DpSize>? = null
+    /** Schermo intero aperto da solo all'avvio di un video: si chiude da solo uscendo dal player. */
+    private var autoFullscreen = false
+
+    val fullscreen: Boolean get() = state.placement == WindowPlacement.Fullscreen
+
+    fun toggleMaximize() = if (maximized) restoreSize() else maximize()
+
+    fun maximize() {
+        if (maximized && state.placement == WindowPlacement.Floating) return
+        if (!maximized) restore = state.position to state.size
+        val area = usableScreenArea()
+        state.placement = WindowPlacement.Floating
+        state.position = WindowPosition(area.x.dp, area.y.dp)
+        state.size = DpSize(area.width.dp, area.height.dp)
+        maximized = true
+    }
+
+    private fun restoreSize() {
+        val (position, size) = restore ?: return
+        state.placement = WindowPlacement.Floating
+        state.position = position
+        state.size = size
+        maximized = false
+    }
+
+    /** Lo schermo su cui sta la finestra, senza la barra delle applicazioni. */
+    private fun usableScreenArea(): Rectangle {
+        val gc = awtWindow?.graphicsConfiguration
+            ?: GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice.defaultConfiguration
+        val b = gc.bounds
+        val i = Toolkit.getDefaultToolkit().getScreenInsets(gc)
+        return Rectangle(b.x + i.left, b.y + i.top, b.width - i.left - i.right, b.height - i.top - i.bottom)
+    }
+
+    fun toggleFullscreen() {
+        autoFullscreen = false
+        state.placement = if (fullscreen) WindowPlacement.Floating else WindowPlacement.Fullscreen
+    }
+
+    fun exitFullscreen() {
+        autoFullscreen = false
+        if (fullscreen) state.placement = WindowPlacement.Floating
+    }
+
+    fun enterAutoFullscreen() {
+        if (fullscreen) return
+        autoFullscreen = true
+        state.placement = WindowPlacement.Fullscreen
+    }
+
+    fun leaveAutoFullscreen() {
+        if (!autoFullscreen) return
+        autoFullscreen = false
+        if (fullscreen) state.placement = WindowPlacement.Floating
+    }
+}
+
+/** Barra del titolo di Velluto: si trascina per spostare la finestra, doppio clic = finestra piena. */
 @Composable
-private fun FrameWindowScope.TitleBar(onMinimize: () -> Unit, onFullscreen: () -> Unit, onClose: () -> Unit) {
+private fun FrameWindowScope.TitleBar(
+    maximized: Boolean,
+    onMinimize: () -> Unit,
+    onMaximize: () -> Unit,
+    onFullscreen: () -> Unit,
+    onClose: () -> Unit,
+) {
     Row(
-        Modifier.fillMaxWidth().height(34.dp).background(TitleBarColor),
+        Modifier
+            .fillMaxWidth()
+            .height(36.dp)
+            .background(Brush.horizontalGradient(listOf(Color(0xFF1A0709), TitleBarColor, TitleBarColor))),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         WindowDraggableArea(Modifier.weight(1f).fillMaxHeight()) {
-            Row(Modifier.fillMaxSize().padding(start = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("VELL", color = Palette.Accent, fontSize = 13.sp, fontWeight = FontWeight.Black)
-                Text("UTO", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Black)
+            Row(
+                Modifier
+                    .fillMaxSize()
+                    .pointerInput(onMaximize) { detectTapGestures(onDoubleTap = { onMaximize() }) }
+                    .padding(start = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("VELL", color = Palette.Accent, fontSize = 13.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                Text("UTO", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
             }
         }
-        TitleButton("—", "Riduci a icona", Color.White.copy(alpha = 0.12f), onMinimize)
-        TitleButton("□", "Schermo intero", Color.White.copy(alpha = 0.12f), onFullscreen)
-        TitleButton("✕", "Chiudi", Color(0xFFC42B1C), onClose)
+        TitleButton("Riduci a icona", Color.White.copy(alpha = 0.12f), onMinimize) {
+            Box(Modifier.width(11.dp).height(1.5.dp).background(Color.White))
+        }
+        TitleButton(if (maximized) "Ripristina" else "Finestra piena", Color.White.copy(alpha = 0.12f), onMaximize) {
+            if (maximized) {
+                Box(Modifier.size(12.dp)) {
+                    Box(Modifier.size(9.dp).align(Alignment.TopEnd).border(1.5.dp, Color.White.copy(alpha = 0.7f)))
+                    Box(Modifier.size(9.dp).align(Alignment.BottomStart).background(TitleBarColor).border(1.5.dp, Color.White))
+                }
+            } else {
+                Box(Modifier.size(11.dp).border(1.5.dp, Color.White))
+            }
+        }
+        TitleButton("Schermo intero (F11)", Color.White.copy(alpha = 0.12f), onFullscreen) {
+            PlayerIconView(PlayerIcon.FULLSCREEN, Color.White, 15.dp)
+        }
+        TitleButton("Chiudi", Color(0xFFC42B1C), onClose) {
+            Text("✕", color = Color.White, fontSize = 14.sp)
+        }
     }
 }
 
 /** Pulsante della barra del titolo: solo mouse, così le frecce della tastiera non ci finiscono sopra. */
 @Composable
-private fun TitleButton(symbol: String, description: String, hoverColor: Color, onClick: () -> Unit) {
+private fun TitleButton(description: String, hoverColor: Color, onClick: () -> Unit, icon: @Composable () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     Box(
@@ -217,7 +329,7 @@ private fun TitleButton(symbol: String, description: String, hoverColor: Color, 
             .pointerInput(onClick) { detectTapGestures { onClick() } },
         contentAlignment = Alignment.Center,
     ) {
-        Text(symbol, color = Color.White, fontSize = 14.sp)
+        icon()
     }
 }
 

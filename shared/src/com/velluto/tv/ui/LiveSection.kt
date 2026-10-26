@@ -1,5 +1,12 @@
 package com.velluto.tv.ui
 
+import androidx.compose.foundation.border
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
@@ -274,14 +281,29 @@ fun ListEntry(
             .padding(vertical = 2.dp)
             .optionalFocusRequester(focusRequester)
             .onFocusChanged { if (it.isFocused) onFocused() }
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(10.dp))
             .background(
-                when {
-                    isFocused -> Color.White
-                    selected -> Palette.SurfaceHigh
-                    else -> Color.Transparent
-                }
+                animateColorAsState(
+                    when {
+                        isFocused -> Color.White
+                        selected -> Palette.Accent.copy(alpha = 0.16f)
+                        else -> Color.Transparent
+                    },
+                    tween(FOCUS_ANIM_MS),
+                    label = "entryBg",
+                ).value
             )
+            // Tacca rossa sulla categoria aperta.
+            .drawBehind {
+                if (selected && !isFocused) {
+                    drawRoundRect(
+                        Palette.AccentBright,
+                        topLeft = Offset(0f, size.height * 0.22f),
+                        size = Size(3.dp.toPx(), size.height * 0.56f),
+                        cornerRadius = CornerRadius(2.dp.toPx()),
+                    )
+                }
+            }
             .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 10.dp),
@@ -307,8 +329,12 @@ private fun ChannelEntry(channel: LiveChannel, onFocused: () -> Unit, onClick: (
             .fillMaxWidth()
             .padding(vertical = 2.dp)
             .onFocusChanged { if (it.isFocused) onFocused() }
-            .clip(RoundedCornerShape(6.dp))
-            .background(if (isFocused) Color.White else Palette.Surface)
+            .focusRing(isFocused, RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(10.dp))
+            .background(
+                animateColorAsState(if (isFocused) Color.White else Palette.Glass, tween(FOCUS_ANIM_MS), label = "chBg").value
+            )
+            .border(1.dp, Palette.Stroke, RoundedCornerShape(10.dp))
             .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),

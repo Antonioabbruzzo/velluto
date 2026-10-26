@@ -1,5 +1,12 @@
 package com.velluto.tv.ui
 
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -345,7 +352,16 @@ private fun SideMenu(
         Modifier
             .width(width)
             .fillMaxHeight()
-            .background(if (open) Color.Black.copy(alpha = 0.95f) else Palette.Background)
+            // Pannello in vetro scuro: aperto diventa quasi opaco e copre la pagina senza spostarla.
+            .background(
+                Brush.horizontalGradient(
+                    if (open) listOf(Color(0xF5100A0C), Color(0xEB0B0B0F))
+                    else listOf(Color(0x99000000), Color(0x40000000)),
+                )
+            )
+            .drawBehind {
+                drawLine(Palette.Stroke, Offset(size.width - 1f, 0f), Offset(size.width - 1f, size.height), 1f)
+            }
             .hoverable(menuInteraction)
             .onFocusChanged { onFocusChange(it.hasFocus) }
             // Entrando nel menu il cursore va sulla sezione in cui ti trovi, non sulla voce più vicina.
@@ -376,18 +392,42 @@ private fun MenuItem(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused = interaction.isHighlighted()
-    val color = when {
-        focused -> Color.Black
-        selected -> Color.White
-        else -> Palette.TextDim
-    }
+    val color by animateColorAsState(
+        when {
+            focused -> Color.Black
+            selected -> Color.White
+            else -> Palette.TextDim
+        },
+        tween(FOCUS_ANIM_MS),
+        label = "menuText",
+    )
+    val bg by animateColorAsState(
+        when {
+            focused -> Color.White
+            selected -> Palette.Accent.copy(alpha = 0.16f)
+            else -> Color.Transparent
+        },
+        tween(FOCUS_ANIM_MS),
+        label = "menuBg",
+    )
     Row(
         Modifier
             .padding(horizontal = 10.dp, vertical = 3.dp)
             .fillMaxWidth()
             .focusRequester(focusRequester)
-            .clip(RoundedCornerShape(6.dp))
-            .background(if (focused) Color.White else Color.Transparent)
+            .clip(RoundedCornerShape(10.dp))
+            .background(bg)
+            // Tacca rossa a sinistra sulla sezione in cui ti trovi.
+            .drawBehind {
+                if (selected && !focused) {
+                    drawRoundRect(
+                        Palette.AccentBright,
+                        topLeft = Offset(0f, size.height * 0.22f),
+                        size = Size(3.dp.toPx(), size.height * 0.56f),
+                        cornerRadius = CornerRadius(2.dp.toPx()),
+                    )
+                }
+            }
             .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 10.dp),

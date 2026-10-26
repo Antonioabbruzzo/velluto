@@ -283,16 +283,16 @@ private fun ExpandingCard(
         animationSpec = tween(EXPAND_MS),
         label = "cardWidth",
     )
-    val shape = RoundedCornerShape(8.dp)
+    val shape = RoundedCornerShape(10.dp)
     Box(
         Modifier
             .width(width)
             .height(CARD_HEIGHT)
             .optionalFocusRequester(focusRequester)
             .onFocusChanged { onFocusChange(it.isFocused) }
+            .focusRing(focused || hovered, shape)
             .clip(shape)
-            .background(Palette.Surface)
-            .border(3.dp, if (focused || hovered) Color.White else Color.Transparent, shape)
+            .background(CardPlaceholder)
             .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = item.onClick),
     ) {
@@ -321,10 +321,16 @@ private fun ExpandingCard(
             Column(Modifier.align(Alignment.BottomStart).padding(14.dp)) {
                 Text(
                     if (t is Series) "SERIE" else "FILM",
-                    color = Palette.Accent,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(AccentGradient)
+                        .padding(horizontal = 6.dp, vertical = 1.dp),
+                    color = Color.White,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 1.sp,
                 )
+                Spacer(Modifier.height(4.dp))
                 Text(
                     t.name,
                     color = Color.White,
