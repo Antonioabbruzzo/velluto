@@ -5,7 +5,11 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -65,6 +69,7 @@ private const val HOVER_DELAY_MS = 250L
  * niente banner in alto, la card selezionata si allarga in formato panoramico e sotto
  * la fila selezionata compaiono genere, anno e trama.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun NetflixBrowse(
     vm: AppViewModel,
@@ -98,6 +103,10 @@ fun NetflixBrowse(
         vm.loadExtra(t)
     }
 
+    // Disattiva lo scorrimento automatico di Compose quando cambia la selezione: lo gestiamo noi
+    // (fila selezionata ferma in alto, card selezionata ferma a sinistra). Insieme all'allargamento
+    // della card, quello automatico faceva "ballare" le file.
+    CompositionLocalProvider(LocalBringIntoViewSpec provides NoAutoScroll) {
     Column(Modifier.fillMaxSize()) {
         header?.invoke()
         if (visibleRows.isEmpty()) {
@@ -149,7 +158,14 @@ fun NetflixBrowse(
             }
         }
     }
+    }
     if (visibleRows.isNotEmpty()) RequestFocus(fr, sectionKey)
+}
+
+/** Nessuno scorrimento automatico verso l'elemento selezionato (lo fanno le pagine a mano). */
+@OptIn(ExperimentalFoundationApi::class)
+private val NoAutoScroll = object : BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float = 0f
 }
 
 @Composable
@@ -194,23 +210,38 @@ private fun NetflixRow(
         Box(Modifier.hoverable(rowInteraction)) {
             LazyRow(
                 state = rowState,
-                contentPadding = PaddingValues(horizontal = 40.dp, vertical = 10.dp),
+                // Spazio vuoto in fondo: anche le ultime card possono arrivare nella posizione fissa a sinistra.
+                contentPadding = PaddingValues(start = 40.dp, end = 900.dp, top = 10.dp, bottom = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                itemsIndexed(row.items) { _, item ->
+                itemsIndexed(row.items) { index, item ->
                     ExpandingCard(
                         vm = vm,
                         item = item,
                         expanded = item.id == expandedId,
                         showDetailsInside = item.id == expandedId && expandedByMouse,
                         focusRequester = if (item.id == focusId) focusRequester else null,
-                        onFocusChange = { has -> if (has) onItemFocused(item) else onItemBlurred(item) },
+                        onFocusChange = { has ->
+                            if (has) {
+                                onItemFocused(item)
+                                // Come Netflix: la card selezionata resta ferma a sinistra e scorre la fila.
+                                scope.launch { rowState.animateScrollToItem(index) }
+                            } else {
+                                onItemBlurred(item)
+                            }
+                        },
                         onHoverStart = { hoverCandidate = item },
                     )
                 }
                 if (openAll != null) {
                     item {
-                        SeeAllCard(openAll.titles.size, CARD_WIDTH, CARD_WIDTH / CARD_HEIGHT) { vm.openGenreEntry(openAll) }
+                        Box(
+                            Modifier.onFocusChanged {
+                                if (it.hasFocus) scope.launch { rowState.animateScrollToItem(row.items.size) }
+                            }
+                        ) {
+                            SeeAllCard(openAll.titles.size, CARD_WIDTH, CARD_WIDTH / CARD_HEIGHT) { vm.openGenreEntry(openAll) }
+                        }
                     }
                 }
             }
