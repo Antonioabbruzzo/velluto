@@ -81,6 +81,14 @@ fun cleanCategoryName(raw: String): String {
     return n
 }
 
+private val ADULT = Regex("""\bxxx\b|porn|erotic|\badult|hentai|\b18\s*\+|\+\s*18\b""", RegexOption.IGNORE_CASE)
+
+/** Categoria per adulti ("XXX …", "Erotico", "Adult", "+18"…): esclusa da suggerimenti e selezioni automatiche. */
+fun isAdultCategory(name: String): Boolean = ADULT.containsMatchIn(name)
+
+/** Titolo che sta in una categoria per adulti. */
+fun Catalog.isAdult(t: Title): Boolean = isAdultCategory(categoryName(t))
+
 /** Un genere (categoria del provider) di film oppure di serie, con tutti i suoi titoli. */
 data class GenreEntry(val id: String, val name: String, val isSeries: Boolean, val titles: List<Title>)
 
@@ -118,11 +126,13 @@ object Recommender {
             .forEach { (key, list) ->
                 val first = list.first()
                 val t = catalog.resolve(key, first.titleId) ?: return@forEach
+                if (catalog.isAdult(t)) return@forEach // non deve influenzare i "Per te"
                 val w = 1.0 + 0.3 * minOf(list.size, 5) + if (list.any { it.finished }) 0.5 else 0.0
                 weights[t.key] = t to w
             }
         lib.favorites.values.sortedByDescending { it.addedAt }.forEach { f ->
             val t = catalog.resolve(f.key, f.id) ?: return@forEach
+            if (catalog.isAdult(t)) return@forEach
             val prev = weights[t.key]?.second ?: 0.0
             weights[t.key] = t to prev + 1.5
         }
@@ -138,7 +148,8 @@ object Recommender {
     }
 
     private fun candidates(catalog: Catalog, exclude: Set<String>): Sequence<Title> =
-        (catalog.series.asSequence() + catalog.movies.asSequence()).filter { it.key !in exclude }
+        (catalog.series.asSequence() + catalog.movies.asSequence())
+            .filter { it.key !in exclude && !catalog.isAdult(it) }
 
     /** "Suggeriti per te": i titoli più vicini ai tuoi generi preferiti. */
     fun forYou(catalog: Catalog, lib: LibraryState, limit: Int = 40): List<Title> {

@@ -42,6 +42,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.velluto.tv.platform.RemoteImage
 import com.velluto.tv.data.Catalog
+import com.velluto.tv.data.Category
+import com.velluto.tv.data.buildTopChannels
 import com.velluto.tv.data.EpgEntry
 import com.velluto.tv.data.LiveChannel
 import kotlinx.coroutines.delay
@@ -49,10 +51,19 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/** Id della categoria virtuale "Top canali" (non esiste nel provider). */
+private const val TOP_ID = "velluto-top"
+
 @Composable
 fun LiveSection(vm: AppViewModel, catalog: Catalog) {
-    val cats = remember(catalog) {
-        catalog.liveCategories.filter { catalog.liveByCategory[it.id].orEmpty().isNotEmpty() }
+    // "★ Top canali": selezione dei canali italiani principali, prima di tutte le categorie del provider.
+    val top = remember(catalog) {
+        buildTopChannels(catalog.live, catalog.liveCategories.associate { it.id to it.name })
+    }
+    val topChannels = remember(top) { top.flatMap { it.channels } }
+    val cats = remember(catalog, top) {
+        val provider = catalog.liveCategories.filter { catalog.liveByCategory[it.id].orEmpty().isNotEmpty() }
+        if (top.isEmpty()) provider else listOf(Category(TOP_ID, "★  Top canali")) + provider
     }
     if (cats.isEmpty()) {
         EmptyMessage("Nessun canale disponibile")
@@ -68,7 +79,12 @@ fun LiveSection(vm: AppViewModel, catalog: Catalog) {
     val results = remember(catalog, q) {
         if (q.length < 2) emptyList() else catalog.live.filter { it.name.contains(q, ignoreCase = true) }
     }
-    val channels = if (searching) results else catalog.liveByCategory[selectedCat].orEmpty()
+    val showingTop = !searching && selectedCat == TOP_ID
+    val channels = when {
+        searching -> results
+        showingTop -> topChannels
+        else -> catalog.liveByCategory[selectedCat].orEmpty()
+    }
     var focused by remember { mutableStateOf<LiveChannel?>(null) }
     var epg by remember { mutableStateOf<List<EpgEntry>>(emptyList()) }
     val catFr = remember { FocusRequester() }
@@ -92,7 +108,11 @@ fun LiveSection(vm: AppViewModel, catalog: Catalog) {
             Modifier.width(250.dp).fillMaxHeight(),
             contentPadding = PaddingValues(vertical = 8.dp, horizontal = 12.dp),
         ) {
-            itemsIndexed(cats) { _, c ->
+            itemsIndexed(cats) { i, c ->
+                // Linea sottile tra "Top canali" e le categorie del provider.
+                if (i == 1 && cats[0].id == TOP_ID) {
+                    Box(Modifier.padding(horizontal = 14.dp, vertical = 8.dp).fillMaxWidth().height(1.dp).background(Palette.SurfaceHigh))
+                }
                 ListEntry(
                     text = c.name,
                     selected = c.id == selectedCat && !searching,
@@ -149,13 +169,39 @@ fun LiveSection(vm: AppViewModel, catalog: Catalog) {
                 Modifier.weight(1f).fillMaxWidth(),
                 contentPadding = PaddingValues(vertical = 8.dp, horizontal = 12.dp),
             ) {
-                itemsIndexed(channels) { index, ch ->
-                    ChannelEntry(
-                        channel = ch,
-                        onFocused = { focused = ch },
-                        // Nel player ▲▼ cambia canale all'interno di questo elenco (categoria o risultati).
-                        onClick = { vm.navigate(Screen.Player(PlayRequest.Live(channels, index))) },
-                    )
+                if (showingTop) {
+                    // Top canali divisi per gruppo, con un titolino; nel player ▲▼ li scorre tutti in ordine.
+                    var offset = 0
+                    top.forEach { group ->
+                        val start = offset
+                        item(key = "h-${group.title}") {
+                            Text(
+                                group.title.uppercase(),
+                                modifier = Modifier.padding(start = 4.dp, top = if (start == 0) 4.dp else 18.dp, bottom = 6.dp),
+                                color = Palette.TextDim,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.5.sp,
+                            )
+                        }
+                        itemsIndexed(group.channels) { i, ch ->
+                            ChannelEntry(
+                                channel = ch,
+                                onFocused = { focused = ch },
+                                onClick = { vm.navigate(Screen.Player(PlayRequest.Live(channels, start + i))) },
+                            )
+                        }
+                        offset += group.channels.size
+                    }
+                } else {
+                    itemsIndexed(channels) { index, ch ->
+                        ChannelEntry(
+                            channel = ch,
+                            onFocused = { focused = ch },
+                            // Nel player ▲▼ cambia canale all'interno di questo elenco (categoria o risultati).
+                            onClick = { vm.navigate(Screen.Player(PlayRequest.Live(channels, index))) },
+                        )
+                    }
                 }
             }
         }

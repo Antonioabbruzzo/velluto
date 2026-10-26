@@ -1,6 +1,12 @@
 package com.velluto.tv.desktop
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.hoverable
@@ -14,8 +20,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.window.WindowDraggableArea
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,9 +32,13 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.graphics.Color
@@ -54,6 +67,7 @@ import com.velluto.tv.ui.AppRoot
 import com.velluto.tv.ui.AppViewModel
 import com.velluto.tv.ui.Palette
 import com.velluto.tv.ui.VellutoTheme
+import kotlinx.coroutines.delay
 
 private class FocusHolder {
     var manager: FocusManager? = null
@@ -139,7 +153,14 @@ fun main() = application {
                     }
                     Box(Modifier.weight(1f).fillMaxWidth()) {
                         AppRoot(vm)
-                        if (!fullscreen) ResizeGrip(windowState, Modifier.align(Alignment.BottomEnd))
+                        if (fullscreen) {
+                            FullscreenExitBar(
+                                onExit = { windowState.placement = WindowPlacement.Floating },
+                                modifier = Modifier.align(Alignment.TopCenter),
+                            )
+                        } else {
+                            ResizeGrip(windowState, Modifier.align(Alignment.BottomEnd))
+                        }
                     }
                 }
             }
@@ -181,6 +202,64 @@ private fun TitleButton(symbol: String, description: String, hoverColor: Color, 
         contentAlignment = Alignment.Center,
     ) {
         Text(symbol, color = Color.White, fontSize = 14.sp)
+    }
+}
+
+/**
+ * In schermo intero: portando il mouse sul bordo in alto scende una barra con la X per tornare
+ * alla finestra normale (come nei browser). Si richiude da sola quando il mouse si allontana.
+ */
+@Composable
+private fun FullscreenExitBar(onExit: () -> Unit, modifier: Modifier) {
+    val edge = remember { MutableInteractionSource() }
+    val bar = remember { MutableInteractionSource() }
+    val close = remember { MutableInteractionSource() }
+    val edgeHovered by edge.collectIsHoveredAsState()
+    val barHovered by bar.collectIsHoveredAsState()
+    val closeHovered by close.collectIsHoveredAsState()
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(edgeHovered, barHovered) {
+        if (edgeHovered || barHovered) visible = true
+        else {
+            delay(900)
+            visible = false
+        }
+    }
+    Box(modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+        // Striscia invisibile sul bordo superiore che "sente" il mouse.
+        Box(Modifier.fillMaxWidth().height(6.dp).hoverable(edge))
+        AnimatedVisibility(
+            visible = visible,
+            enter = slideInVertically { -it } + fadeIn(),
+            exit = slideOutVertically { -it } + fadeOut(),
+        ) {
+            Row(
+                Modifier
+                    .padding(top = 14.dp)
+                    .shadow(16.dp, RoundedCornerShape(28.dp))
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(Color(0xE6141418))
+                    .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(28.dp))
+                    .hoverable(bar)
+                    .padding(start = 22.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Esci da schermo intero", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text("   Esc", color = Color.White.copy(alpha = 0.45f), fontSize = 12.sp)
+                Spacer(Modifier.width(14.dp))
+                Box(
+                    Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(if (closeHovered) Palette.Accent else Color.White.copy(alpha = 0.14f))
+                        .hoverable(close)
+                        .pointerInput(onExit) { detectTapGestures { onExit() } },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("✕", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
     }
 }
 

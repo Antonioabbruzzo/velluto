@@ -47,6 +47,8 @@ import com.velluto.tv.data.Catalog
 import com.velluto.tv.data.Category
 import com.velluto.tv.data.CatalogCache
 import com.velluto.tv.data.buildGenreEntries
+import com.velluto.tv.data.buildTopChannels
+import com.velluto.tv.data.isAdultCategory
 import com.velluto.tv.data.cleanEpisodeTitle
 import com.velluto.tv.ui.TitleExtra
 import com.velluto.tv.ui.ControlGroup
@@ -426,6 +428,39 @@ class ScreenshotTest {
         vm.lastFocus["live-query"] = "rete"
         show { WithMenu { HomeScreen(vm, Fake.catalog) } }
         capture("27-ricerca-canali")
+    }
+
+    @Test
+    fun topChannels() {
+        // Nomi come quelli veri del provider: versioni 4K/FHD/HD/SAT, timeshift e una categoria per adulti.
+        val cats = listOf(
+            Category("it", "Italia"), Category("it4k", "Italia 4K - FHD"), Category("sky", "Intrattenimento"),
+            Category("sport", "Sport 4K - FHD"), Category("news", "News"), Category("xxx", "XXX Live"),
+            Category("de", "Live Deutschland"),
+        )
+        val names = listOf(
+            "it" to "Rai 1 HD", "it4k" to "Rai 1 4K", "it4k" to "Rai 1 FHD", "it" to "Rai 1 +1 HD",
+            "it" to "Rai 2 HD", "it" to "Rai 3 HD", "it4k" to "Canale 5 4K", "it" to "Canale 5 HD",
+            "it" to "Italia 1 HD", "it" to "La7 HD", "it" to "Discovery Nove HD", "sky" to "Sky Uno HD",
+            "sky" to "Sky Uno SAT", "sky" to "Sky Atlantic HD", "sky" to "Mediaset Canale 20 HD",
+            "sport" to "Sky Sport Uno 4K", "sport" to "Sky Sport Uno FHD", "sport" to "Eurosport 1 FHD",
+            "news" to "Sky TG24 HD", "news" to "Rai News 24 HD", "xxx" to "XXX Rai 1 HD", "de" to "Das Erste HD",
+        )
+        val live = names.mapIndexed { i, (cat, n) ->
+            LiveChannel(id = 2000 + i, num = i + 1, name = n, icon = "fake://logo/c${i % 15}", categoryId = cat)
+        }
+        val top = buildTopChannels(live, cats.associate { it.id to it.name })
+        val picked = top.flatMap { it.channels }.map { it.name }
+        org.junit.Assert.assertTrue(picked.toString(), "Rai 1 FHD" in picked)
+        org.junit.Assert.assertTrue(picked.toString(), picked.none { "4K" in it || "+1" in it || "XXX" in it || "Erste" in it })
+        org.junit.Assert.assertTrue(picked.toString(), "Sky Sport Uno FHD" in picked && "Mediaset Canale 20 HD" in picked)
+        org.junit.Assert.assertTrue(isAdultCategory("XXX Milf") && isAdultCategory("Film Erotici") && !isAdultCategory("Commedia"))
+
+        vm.section = Section.LIVE
+        vm.lastFocus["live-cat"] = "velluto-top"
+        vm.lastFocus["live-query"] = ""
+        show { WithMenu { HomeScreen(vm, Fake.catalog.copy(liveCategories = cats, live = live)) } }
+        capture("29-top-canali")
     }
 
     @Test
