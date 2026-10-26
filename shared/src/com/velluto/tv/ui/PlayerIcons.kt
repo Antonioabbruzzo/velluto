@@ -66,14 +66,15 @@ private fun DrawScope.drawPlayerIcon(icon: PlayerIcon, color: Color) {
         }
         PlayerIcon.BACK10, PlayerIcon.FWD10 -> {
             // Cerchio quasi chiuso con la punta della freccia; il "10" è scritto sopra.
-            val back = icon == PlayerIcon.BACK10
-            val start = if (back) -60f else -120f
+            // "Avanti" ha la punta in alto a destra, "indietro" in alto a sinistra.
+            val fwd = icon == PlayerIcon.FWD10
+            val start = if (fwd) -60f else -120f
             drawArc(
-                color, startAngle = start, sweepAngle = if (back) -300f else 300f, useCenter = false,
+                color, startAngle = start, sweepAngle = if (fwd) -300f else 300f, useCenter = false,
                 topLeft = Offset(w * 0.1f, h * 0.1f), size = Size(w * 0.8f, h * 0.8f),
                 style = Stroke(width = stroke, cap = StrokeCap.Round),
             )
-            if (back) triangle(listOf(0.66f to 0.02f, 0.82f to 0.2f, 0.58f to 0.26f))
+            if (fwd) triangle(listOf(0.66f to 0.02f, 0.82f to 0.2f, 0.58f to 0.26f))
             else triangle(listOf(0.34f to 0.02f, 0.18f to 0.2f, 0.42f to 0.26f))
         }
         PlayerIcon.VOLUME, PlayerIcon.MUTED -> {
