@@ -2,6 +2,7 @@ package com.velluto.tv.ui
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
@@ -54,6 +55,7 @@ import androidx.compose.ui.zIndex
 import androidx.compose.runtime.collectAsState
 import com.velluto.tv.platform.RemoteImage
 import com.velluto.tv.data.Episode
+import com.velluto.tv.data.cleanCategoryName
 import com.velluto.tv.data.LibraryState
 import com.velluto.tv.data.Movie
 import com.velluto.tv.data.MovieDetail
@@ -333,19 +335,23 @@ private fun EpisodeCard(ep: Episode, fallbackImage: String, progress: Progress?,
 @Composable
 fun MovieDetailScreen(vm: AppViewModel, movie: Movie, preloaded: MovieDetail? = null) {
     val lib by vm.library.state.collectAsState()
+    // Lo stesso film può essere caricato più volte dal provider (copie diverse, a volte non
+    // funzionanti): si può scegliere quale riprodurre. Progressi e lista restano in comune.
+    val versions = remember(vm.catalog, movie) { vm.catalog?.versionsOf(movie)?.takeIf { it.size > 1 } ?: listOf(movie) }
+    var current by remember(movie) { mutableStateOf(movie) }
     var detail by remember { mutableStateOf(preloaded) }
-    LaunchedEffect(movie.id) {
-        if (preloaded != null) return@LaunchedEffect
-        detail = runCatching { vm.client?.movieDetail(movie.id) }.getOrNull()
+    LaunchedEffect(current.id) {
+        if (preloaded != null && current.id == movie.id) return@LaunchedEffect
+        detail = runCatching { vm.client?.movieDetail(current.id) }.getOrNull() ?: detail
     }
     val d = detail
     val progress = lib.progress[movie.key]
     val isFav = lib.favorites.containsKey(movie.key)
     val playFr = remember { FocusRequester() }
-    val ext = d?.ext?.ifBlank { null } ?: movie.ext
+    val ext = d?.ext?.ifBlank { null }?.takeIf { current.id == movie.id } ?: current.ext
 
     fun play(startMs: Long) {
-        vm.navigate(Screen.Player(PlayRequest.MovieReq(movie, ext, startMs)))
+        vm.navigate(Screen.Player(PlayRequest.MovieReq(current, ext, startMs)))
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -400,6 +406,28 @@ fun MovieDetailScreen(vm: AppViewModel, movie: Movie, preloaded: MovieDetail? = 
             if (resumable) {
                 Spacer(Modifier.height(12.dp))
                 ProgressBar(progress!!.fraction, Modifier.width(300.dp))
+            }
+            if (versions.size > 1) {
+                Spacer(Modifier.height(26.dp))
+                Text("Versioni disponibili", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    "Se questa non parte, prova un'altra versione",
+                    color = Palette.TextDim, fontSize = 13.sp,
+                )
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    versions.forEachIndexed { i, v ->
+                        val category = vm.catalog?.categoryName(v)?.let(::cleanCategoryName).orEmpty()
+                        TvButton(
+                            "Versione ${i + 1}" + if (category.isNotBlank()) "  ·  $category" else "",
+                            onClick = { current = v },
+                            icon = if (v.id == current.id) Icons.Filled.Check else null,
+                        )
+                    }
+                }
             }
         }
     }

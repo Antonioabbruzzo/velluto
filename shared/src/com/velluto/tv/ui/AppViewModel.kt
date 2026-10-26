@@ -184,6 +184,7 @@ class AppViewModel(val platform: PlatformServices) {
                     // Prepara qui (non sul thread dell'interfaccia) gli indici del catalogo usati ovunque.
                     c.resolve("movie:", -1)
                     c.resolve("series:", -1)
+                    c.movies.firstOrNull()?.let { c.versionsOf(it) }
                     c.moviesByCategory
                     c.seriesByCategory
                     c.liveByCategory

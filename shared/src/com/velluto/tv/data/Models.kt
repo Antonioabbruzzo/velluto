@@ -111,6 +111,7 @@ data class Catalog(
     val seriesByCategory: Map<String, List<Series>> by lazy { series.groupBy { it.categoryId } }
     private val moviesByKey: Map<String, Movie> by lazy { movies.associateBy { it.key } }
     private val seriesByKey: Map<String, Series> by lazy { series.associateBy { it.key } }
+    private val movieVersions: Map<String, List<Movie>> by lazy { movies.groupBy { it.key } }
     private val moviesById: Map<Int, Movie> by lazy { movies.associateBy { it.id } }
     private val seriesById: Map<Int, Series> by lazy { series.associateBy { it.id } }
     private val movieCategoryNames: Map<String, String> by lazy { movieCategories.associate { it.id to it.name } }
@@ -121,6 +122,9 @@ data class Catalog(
         is Movie -> movieCategoryNames[t.categoryId]
         is Series -> seriesCategoryNames[t.categoryId]
     }.orEmpty()
+
+    /** Tutte le copie dello stesso film presenti nel catalogo (stesso nome), compresa questa. */
+    fun versionsOf(m: Movie): List<Movie> = movieVersions[m.key].orEmpty().ifEmpty { listOf(m) }
 
     /** Ritrova un titolo salvato: prima per nome (stabile), poi per ID. */
     fun resolve(key: String, id: Int): Title? = when {

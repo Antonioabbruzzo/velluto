@@ -239,6 +239,17 @@ class ScreenshotTest {
     }
 
     @Test
+    fun movieVersions() {
+        // Lo stesso film caricato tre volte dal provider, in categorie diverse.
+        val m = Fake.movies[4]
+        val copies = listOf(m.copy(id = 9001, categoryId = Fake.movies[0].categoryId), m.copy(id = 9002, categoryId = Fake.movies[9].categoryId))
+        vm.catalog = Fake.catalog.copy(movies = Fake.catalog.movies + copies)
+        org.junit.Assert.assertEquals(3, vm.catalog!!.versionsOf(m).size)
+        show { MovieDetailScreen(vm, m, Fake.movieDetail) }
+        capture("30-versioni-film")
+    }
+
+    @Test
     fun myList() {
         seedLibrary()
         vm.section = Section.MY_LIST
