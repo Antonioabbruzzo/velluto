@@ -49,7 +49,9 @@ import com.velluto.tv.data.CatalogCache
 import com.velluto.tv.data.buildGenreEntries
 import com.velluto.tv.data.cleanEpisodeTitle
 import com.velluto.tv.ui.TitleExtra
+import com.velluto.tv.ui.ControlGroup
 import com.velluto.tv.ui.PlayerControl
+import com.velluto.tv.ui.PlayerIcon
 import com.velluto.tv.data.Episode
 import com.velluto.tv.data.LiveChannel
 import com.velluto.tv.data.Movie
@@ -271,13 +273,22 @@ class ScreenshotTest {
                     epg = emptyList(),
                     error = null,
                     controls = listOf(
-                        PlayerControl("⏮", "Precedente", true) {},
-                        PlayerControl("«", "10 s", true) {},
-                        PlayerControl("▶", "Riproduci", true) {},
-                        PlayerControl("»", "10 s", true) {},
-                        PlayerControl("⏭", "Successivo", true) {},
+                        PlayerControl("⏮", "Episodio prec.", true, PlayerIcon.PREV) {},
+                        PlayerControl("«", "Indietro 10 s", true, PlayerIcon.BACK10) {},
+                        PlayerControl("▶", "Riproduci", true, PlayerIcon.PLAY, primary = true) {},
+                        PlayerControl("»", "Avanti 10 s", true, PlayerIcon.FWD10) {},
+                        PlayerControl("⏭", "Episodio succ.", true, PlayerIcon.NEXT) {},
+                        PlayerControl("", "Muto", true, PlayerIcon.VOLUME, ControlGroup.VOLUME) {},
+                        PlayerControl("−", "Volume −", true, PlayerIcon.MINUS, ControlGroup.VOLUME) {},
+                        PlayerControl("+", "Volume +", true, PlayerIcon.PLUS, ControlGroup.VOLUME) {},
+                        PlayerControl("□", "Schermo intero", true, PlayerIcon.FULLSCREEN, ControlGroup.WINDOW) {},
                     ),
                     selectedControl = 4,
+                    volume = 0.7f,
+                    onSeek = {},
+                    onVolumeChange = {},
+                    onBack = {},
+                    onTogglePlay = {},
                 )
             }
         }
@@ -435,13 +446,15 @@ class ScreenshotTest {
                     epg = emptyList(),
                     error = null,
                     controls = listOf(
-                        PlayerControl("⏮", "Canale prec.", true) {},
-                        PlayerControl("−", "", true) {},
-                        PlayerControl("", "Muto", true) {},
-                        PlayerControl("+", "", true) {},
-                        PlayerControl("⏭", "Canale succ.", true) {},
+                        PlayerControl("⏮", "Canale prec.", true, PlayerIcon.PREV) {},
+                        PlayerControl("⏭", "Canale succ.", true, PlayerIcon.NEXT) {},
+                        PlayerControl("", "Muto", true, PlayerIcon.VOLUME, ControlGroup.VOLUME) {},
+                        PlayerControl("−", "Volume −", true, PlayerIcon.MINUS, ControlGroup.VOLUME) {},
+                        PlayerControl("+", "Volume +", true, PlayerIcon.PLUS, ControlGroup.VOLUME) {},
                     ),
-                    selectedControl = 4,
+                    selectedControl = 1,
+                    volume = 0.7f,
+                    onBack = {},
                 )
             }
         }

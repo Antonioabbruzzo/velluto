@@ -43,6 +43,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -301,27 +302,37 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
     // ±10 s, pausa ed episodio precedente/successivo. Su Windows anche "Schermo intero".
     val controls: List<PlayerControl> = buildList {
         if (r is PlayRequest.Live) {
-            add(PlayerControl("⏮", "Canale prec.", r.channels.size > 1) { zap(-1) })
+            add(PlayerControl("⏮", "Canale prec.", r.channels.size > 1, PlayerIcon.PREV) { zap(-1) })
+            add(PlayerControl("⏭", "Canale succ.", r.channels.size > 1, PlayerIcon.NEXT) { zap(+1) })
         } else {
             val episode = r as? PlayRequest.EpisodeReq
             if (episode != null) {
-                add(PlayerControl("⏮", "Prec.", episode.index > 0) { goToEpisode(-1, finished = false) })
+                add(PlayerControl("⏮", "Episodio prec.", episode.index > 0, PlayerIcon.PREV) { goToEpisode(-1, finished = false) })
             }
-            add(PlayerControl("«", "10 s", true) { seekBy(-10_000) })
-            add(PlayerControl(if (isPlaying) "❚❚" else "▶", if (isPlaying) "Pausa" else "Riproduci", true) { togglePlay() })
-            add(PlayerControl("»", "10 s", true) { seekBy(10_000) })
+            add(PlayerControl("«", "Indietro 10 s", true, PlayerIcon.BACK10) { seekBy(-10_000) })
+            add(
+                PlayerControl(
+                    if (isPlaying) "❚❚" else "▶",
+                    if (isPlaying) "Pausa" else "Riproduci",
+                    true,
+                    if (isPlaying) PlayerIcon.PAUSE else PlayerIcon.PLAY,
+                    primary = true,
+                ) { togglePlay() }
+            )
+            add(PlayerControl("»", "Avanti 10 s", true, PlayerIcon.FWD10) { seekBy(10_000) })
             if (episode != null) {
-                add(PlayerControl("⏭", "Succ.", hasNext(episode)) { goToEpisode(+1, finished = false) })
+                add(PlayerControl("⏭", "Episodio succ.", hasNext(episode), PlayerIcon.NEXT) { goToEpisode(+1, finished = false) })
             }
         }
-        add(PlayerControl("−", "", true) { volumeDown() })
-        add(PlayerControl("", if (muted) "Audio" else "Muto", true) { toggleMute() })
-        add(PlayerControl("+", "", true) { volumeUp() })
-        if (r is PlayRequest.Live) {
-            add(PlayerControl("⏭", "Canale succ.", r.channels.size > 1) { zap(+1) })
-        }
+        add(
+            PlayerControl("", if (muted) "Audio" else "Muto", true, if (muted) PlayerIcon.MUTED else PlayerIcon.VOLUME, ControlGroup.VOLUME) {
+                toggleMute()
+            }
+        )
+        add(PlayerControl("−", "Volume −", true, PlayerIcon.MINUS, ControlGroup.VOLUME) { volumeDown() })
+        add(PlayerControl("+", "Volume +", true, PlayerIcon.PLUS, ControlGroup.VOLUME) { volumeUp() })
         if (vm.platform.toggleFullscreen != null) {
-            add(PlayerControl("□", "Schermo intero", true) { toggleFullscreen() })
+            add(PlayerControl("□", "Schermo intero", true, PlayerIcon.FULLSCREEN, ControlGroup.WINDOW) { toggleFullscreen() })
         }
     }
     // Aprendo la barra si parte da Pausa (film/serie) o da Muto (diretta).
@@ -391,11 +402,19 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
         Modifier
             .fillMaxSize()
             .background(Color.Black)
-            // Col mouse (Windows): un clic sul video mostra i controlli, doppio clic = schermo intero.
+            // Col mouse (Windows): muovendolo compaiono i comandi; un clic mette in pausa/riprende
+            // (in diretta mostra i comandi), doppio clic = schermo intero.
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        if (awaitPointerEvent().type == PointerEventType.Move) showOverlay()
+                    }
+                }
+            }
             .pointerInput(r is PlayRequest.Live) {
                 detectTapGestures(
                     onDoubleTap = { toggleFullscreen() },
-                    onTap = { openControls() },
+                    onTap = { if (r is PlayRequest.Live) showOverlay() else togglePlay() },
                 )
             }
             .onKeyEvent { e ->
@@ -444,6 +463,24 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
                     controls.getOrNull(i)?.takeIf { it.enabled }?.action?.invoke()
                     showOverlay()
                 },
+                volume = volume,
+                muted = muted,
+                onSeek = { f ->
+                    if (durationMs > 0) {
+                        engine.seekTo((f * durationMs).toLong().coerceIn(0L, durationMs - 1_000))
+                        positionMs = (f * durationMs).toLong()
+                    }
+                    showOverlay()
+                },
+                onVolumeChange = { v ->
+                    applyVolume(v, mute = false)
+                    showOverlay()
+                },
+                onBack = {
+                    countdown = null
+                    vm.back()
+                },
+                onTogglePlay = { togglePlay() },
             )
         }
 
@@ -509,132 +546,3 @@ internal fun Pill(text: String, modifier: Modifier) {
     }
 }
 
-/** Un pulsante della barra dei controlli del player. */
-internal class PlayerControl(
-    val symbol: String,
-    val label: String,
-    val enabled: Boolean,
-    val action: () -> Unit,
-)
-
-@Composable
-private fun ControlButton(control: PlayerControl, selected: Boolean, onClick: () -> Unit) {
-    val bg = when {
-        selected -> Color.White
-        else -> Color.White.copy(alpha = 0.14f)
-    }
-    val fg = when {
-        !control.enabled -> Color.White.copy(alpha = 0.3f)
-        selected -> Color.Black
-        else -> Color.White
-    }
-    Row(
-        Modifier
-            .clip(RoundedCornerShape(22.dp))
-            .background(bg)
-            .clickable(enabled = control.enabled, onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // Pulsanti compatti: solo simbolo (es. volume − / +) oppure solo testo (es. Muto).
-        if (control.symbol.isNotEmpty()) {
-            Text(control.symbol, color = fg, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-        }
-        if (control.symbol.isNotEmpty() && control.label.isNotEmpty()) Spacer(Modifier.width(8.dp))
-        if (control.label.isNotEmpty()) {
-            Text(control.label, color = fg, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-        }
-    }
-}
-
-@Composable
-internal fun PlayerOverlay(
-    req: PlayRequest,
-    isPlaying: Boolean,
-    positionMs: Long,
-    durationMs: Long,
-    epg: List<EpgEntry>,
-    error: String?,
-    controls: List<PlayerControl> = emptyList(),
-    selectedControl: Int = -1,
-    onControlClick: (Int) -> Unit = {},
-) {
-    val (title, subtitle) = when (req) {
-        is PlayRequest.Live -> {
-            val ch = req.channels[req.index]
-            val now = System.currentTimeMillis()
-            val current = epg.firstOrNull { now in it.start until it.end }
-            (if (ch.num > 0) "${ch.num}  ${ch.name}" else ch.name) to (current?.title ?: "")
-        }
-        is PlayRequest.MovieReq -> req.movie.name to ""
-        is PlayRequest.EpisodeReq -> {
-            val ep = req.episodes[req.index]
-            req.series.name to "S${ep.season}:E${ep.number}  ${ep.title}"
-        }
-    }
-
-    Box(Modifier.fillMaxSize()) {
-        Box(
-            Modifier.fillMaxWidth().height(140.dp).align(Alignment.TopCenter)
-                .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.8f), Color.Transparent)))
-        )
-        Box(
-            Modifier.fillMaxWidth().height(220.dp).align(Alignment.BottomCenter)
-                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))))
-        )
-        Column(Modifier.align(Alignment.TopStart).padding(start = 40.dp, top = 28.dp, end = 40.dp)) {
-            Text(title, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (subtitle.isNotBlank()) {
-                Text(subtitle, color = Palette.TextDim, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-        }
-        if (error != null) {
-            Box(
-                Modifier.align(Alignment.Center).clip(RoundedCornerShape(8.dp))
-                    .background(Color.Black.copy(alpha = 0.85f)).padding(24.dp)
-            ) {
-                Text(error, color = Color.White, fontSize = 16.sp)
-            }
-        }
-        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 40.dp, vertical = 28.dp)) {
-            if (controls.isNotEmpty()) {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
-                ) {
-                    controls.forEachIndexed { i, c ->
-                        ControlButton(c, selected = i == selectedControl, onClick = { onControlClick(i) })
-                    }
-                }
-                Spacer(Modifier.height(16.dp))
-            }
-            if (req is PlayRequest.Live) {
-                Text(
-                    if (selectedControl >= 0) "◀ ▶  scegli  ·  OK  conferma  ·  ▲  chiudi"
-                    else "▲ ▼  cambia canale  ·  OK  canali e volume",
-                    color = Palette.TextDim,
-                    fontSize = 13.sp,
-                )
-            } else {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Text(formatTime(positionMs), color = Color.White, fontSize = 13.sp)
-                    ProgressBar(
-                        if (durationMs > 0) positionMs.toFloat() / durationMs else 0f,
-                        Modifier.weight(1f),
-                    )
-                    Text(
-                        if (durationMs > 0) "-${formatTime(durationMs - positionMs)}" else "",
-                        color = Color.White, fontSize = 13.sp,
-                    )
-                }
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    if (selectedControl >= 0) "◀ ▶  scegli  ·  OK  conferma  ·  ▲  chiudi"
-                    else "▼  controlli  ·  ◀ ▶  ±10 s (tieni premuto per andare più veloce)  ·  OK  pausa",
-                    color = Palette.TextDim,
-                    fontSize = 12.sp,
-                )
-            }
-        }
-    }
-}

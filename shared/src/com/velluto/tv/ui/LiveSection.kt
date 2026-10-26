@@ -80,7 +80,14 @@ fun LiveSection(vm: AppViewModel, catalog: Catalog) {
         epg = runCatching { vm.client?.shortEpg(ch.id) }.getOrNull().orEmpty()
     }
 
-    Row(Modifier.fillMaxSize().padding(top = 24.dp)) {
+    Column(Modifier.fillMaxSize()) {
+    // In alto: "← Indietro" torna alla Home (come il tasto Indietro del telecomando).
+    Row(Modifier.padding(start = 24.dp, top = 22.dp), verticalAlignment = Alignment.CenterVertically) {
+        BackButton(onClick = { vm.section = Section.HOME })
+        Spacer(Modifier.width(20.dp))
+        Text("Canali TV", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+    }
+    Row(Modifier.fillMaxWidth().weight(1f).padding(top = 8.dp)) {
         LazyColumn(
             Modifier.width(250.dp).fillMaxHeight(),
             contentPadding = PaddingValues(vertical = 8.dp, horizontal = 12.dp),
@@ -169,6 +176,7 @@ fun LiveSection(vm: AppViewModel, catalog: Catalog) {
                 EpgPanel(epg)
             }
         }
+    }
     }
     RequestFocus(catFr, "live")
 }
