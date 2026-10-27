@@ -1,5 +1,11 @@
 package com.velluto.tv.ui
 
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineScope
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -60,6 +66,7 @@ private val CARD_HEIGHT = 200.dp
 private val CARD_WIDTH = 133.dp // 2:3, locandina verticale
 private val CARD_WIDTH_EXPANDED = 356.dp // 16:9, immagine panoramica
 private const val EXPAND_MS = 220
+private val CARD_SPACING = 12.dp
 
 /** Ritardo prima che il passaggio del mouse allarghi una card (evita il "lampeggio" passando sopra veloci). */
 private const val HOVER_DELAY_MS = 250L
@@ -162,6 +169,42 @@ fun NetflixBrowse(
     if (visibleRows.isNotEmpty()) RequestFocus(fr, sectionKey)
 }
 
+/**
+ * Scorrimento orizzontale di una fila "a passi": [by] scorre di un certo numero di pixel con la
+ * stessa animazione dell'allargamento delle card. Pressioni ravvicinate (tasto tenuto premuto)
+ * si sommano: quello che non è ancora stato percorso non si perde.
+ */
+private class RowSlide(private val state: LazyListState) {
+    var focusedIndex = -1
+    var stillFocused = false
+    var blurredAt = 0L
+    private var pending = 0f
+    private var job: Job? = null
+
+    fun by(scope: CoroutineScope, px: Float, settle: suspend () -> Unit) {
+        pending += px
+        job?.cancel()
+        job = scope.launch {
+            val total = pending
+            var done = 0f
+            state.scroll {
+                animate(0f, total, animationSpec = tween(EXPAND_MS)) { value, _ ->
+                    pending -= scrollBy(value - done)
+                    done = value
+                }
+            }
+            pending = 0f
+            // Piccola correzione finale: la card selezionata esattamente nella sua posizione a sinistra.
+            settle()
+        }
+    }
+
+    fun reset() {
+        job?.cancel()
+        pending = 0f
+    }
+}
+
 /** Nessuno scorrimento automatico verso l'elemento selezionato (lo fanno le pagine a mano). */
 @OptIn(ExperimentalFoundationApi::class)
 private val NoAutoScroll = object : BringIntoViewSpec {
@@ -185,6 +228,33 @@ private fun NetflixRow(
 ) {
     val rowState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    val slide = remember(rowState) { RowSlide(rowState) }
+    val stepPx = with(LocalDensity.current) { (CARD_WIDTH + CARD_SPACING).toPx() }
+
+    // La card selezionata resta ferma a sinistra. Passando con ◀ ▶ da una card all'altra la fila
+    // scorre di un passo fisso per card, nello stesso tempo e con la stessa curva con cui la card
+    // vecchia si stringe e la nuova si allarga: i due movimenti si sommano in uno solo, fluido.
+    // (Prima la fila inseguiva una posizione che si spostava mentre le card cambiavano misura: "ballava".)
+    fun onCardFocused(index: Int) {
+        val prev = slide.focusedIndex
+        val horizontal = prev >= 0 && (slide.stillFocused || System.currentTimeMillis() - slide.blurredAt < 250)
+        slide.focusedIndex = index
+        slide.stillFocused = true
+        if (horizontal && prev != index) {
+            slide.by(scope, (index - prev) * stepPx) { rowState.animateScrollToItem(index) }
+        } else {
+            slide.reset()
+            scope.launch { rowState.animateScrollToItem(index) }
+        }
+    }
+
+    fun onCardBlurred(index: Int) {
+        if (index == slide.focusedIndex) {
+            slide.stillFocused = false
+            slide.blurredAt = System.currentTimeMillis()
+        }
+    }
+
     val rowInteraction = remember { MutableInteractionSource() }
     val rowHovered by rowInteraction.collectIsHoveredAsState()
 
@@ -212,7 +282,7 @@ private fun NetflixRow(
                 state = rowState,
                 // Spazio vuoto in fondo: anche le ultime card possono arrivare nella posizione fissa a sinistra.
                 contentPadding = PaddingValues(start = 40.dp, end = 900.dp, top = 10.dp, bottom = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(CARD_SPACING),
             ) {
                 itemsIndexed(row.items) { index, item ->
                     ExpandingCard(
@@ -225,9 +295,10 @@ private fun NetflixRow(
                             if (has) {
                                 onItemFocused(item)
                                 // Come Netflix: la card selezionata resta ferma a sinistra e scorre la fila.
-                                scope.launch { rowState.animateScrollToItem(index) }
+                                onCardFocused(index)
                             } else {
                                 onItemBlurred(item)
+                                onCardBlurred(index)
                             }
                         },
                         onHoverStart = { hoverCandidate = item },
@@ -235,9 +306,10 @@ private fun NetflixRow(
                 }
                 if (openAll != null) {
                     item {
+                        val index = row.items.size
                         Box(
                             Modifier.onFocusChanged {
-                                if (it.hasFocus) scope.launch { rowState.animateScrollToItem(row.items.size) }
+                                if (it.hasFocus) onCardFocused(index) else onCardBlurred(index)
                             }
                         ) {
                             SeeAllCard(openAll.titles.size, CARD_WIDTH, CARD_WIDTH / CARD_HEIGHT) { vm.openGenreEntry(openAll) }
