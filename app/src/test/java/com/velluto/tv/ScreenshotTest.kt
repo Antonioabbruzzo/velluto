@@ -41,6 +41,8 @@ import coil.intercept.Interceptor
 import coil.request.ImageResult
 import coil.request.SuccessResult
 import com.github.takahirom.roborazzi.captureRoboImage
+import com.velluto.tv.ui.PostPlayPanel
+import com.velluto.tv.data.Recommender
 import com.velluto.tv.data.Account
 import com.velluto.tv.data.AccountInfo
 import com.velluto.tv.data.Catalog
@@ -264,6 +266,25 @@ class ScreenshotTest {
         press(Key.DirectionRight)
         press(Key.DirectionDown, 2)
         capture("09-tv-live")
+    }
+
+    @Test
+    fun postPlay() {
+        val m = Fake.movies[4]
+        val similar = Recommender.similarTo(Fake.catalog, m, vm.library.state.value)
+        org.junit.Assert.assertTrue(similar.isNotEmpty() && similar.none { it.key == m.key })
+        show {
+            Box(Modifier.fillMaxSize()) {
+                Image(
+                    bitmap = Fake.backdropBitmap(5, 1280, 720).asImageBitmap(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                PostPlayPanel(source = m.name, titles = similar, selected = 1, ended = false, onOpen = {}, onDismiss = {})
+            }
+        }
+        capture("31-fine-film-consigliati")
     }
 
     @Test

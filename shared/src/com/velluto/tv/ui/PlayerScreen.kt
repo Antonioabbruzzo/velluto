@@ -1,5 +1,12 @@
 package com.velluto.tv.ui
 
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import com.velluto.tv.data.Title
+import com.velluto.tv.data.Series
+import com.velluto.tv.data.Recommender
+import com.velluto.tv.data.Movie
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -60,6 +67,8 @@ import kotlin.math.roundToInt
 
 private const val NEXT_EPISODE_COUNTDOWN = 10
 private const val NEAR_END_MS = 45_000L
+/** Negli ultimi minuti di un film compaiono i titoli consigliati (di solito sono i titoli di coda). */
+private const val POST_PLAY_MS = 180_000L
 
 @Composable
 fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
@@ -199,6 +208,26 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
         showOverlay()
     }
 
+    // Fine film: titoli consigliati in base a questo film, calcolati in sottofondo appena parte.
+    var similar by remember { mutableStateOf<List<Title>>(emptyList()) }
+    var movieEnded by remember { mutableStateOf(false) }
+    var postPlayDismissed by remember { mutableStateOf(false) }
+    var postPlaySelected by remember { mutableIntStateOf(0) }
+    LaunchedEffect(req) {
+        val r = req
+        similar = emptyList()
+        movieEnded = false
+        postPlayDismissed = false
+        postPlaySelected = 0
+        val catalog = vm.catalog
+        if (r is PlayRequest.MovieReq && catalog != null) {
+            val lib = vm.library.state.value
+            similar = withContext(Dispatchers.Default) {
+                runCatching { Recommender.similarTo(catalog, r.movie, lib) }.getOrDefault(emptyList())
+            }
+        }
+    }
+
     // Guida TV del canale in onda.
     LaunchedEffect(req) {
         val r = req
@@ -226,6 +255,10 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
                 saveProgress(forceFinished = true)
                 when {
                     hasNext(r) -> countdown = NEXT_EPISODE_COUNTDOWN
+                    r is PlayRequest.MovieReq && similar.isNotEmpty() -> {
+                        movieEnded = true
+                        postPlayDismissed = false
+                    }
                     r !is PlayRequest.Live -> vm.back()
                 }
             }
@@ -291,6 +324,19 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
 
     val r = req
     val nearEnd = hasNext(r) && countdown == null && durationMs > 0 && durationMs - positionMs in 1..NEAR_END_MS
+    val postPlay = r is PlayRequest.MovieReq && similar.isNotEmpty() && !postPlayDismissed &&
+        (movieEnded || (durationMs > POST_PLAY_MS * 4 && durationMs - positionMs in 1..POST_PLAY_MS))
+
+    // Apre il titolo consigliato: si esce dal player e si va alla sua scheda.
+    fun openSimilar(i: Int) {
+        val t = similar.getOrNull(i) ?: return
+        countdown = null
+        vm.back()
+        when (t) {
+            is Series -> vm.navigate(Screen.SeriesDetail(t))
+            is Movie -> vm.navigate(Screen.MovieDetail(t))
+        }
+    }
 
     fun seekBy(deltaMs: Long) {
         val max = if (durationMs > 0) durationMs - 1_000 else Long.MAX_VALUE
@@ -357,6 +403,16 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
     var repeats by remember { mutableIntStateOf(0) }
 
     fun handleKey(key: Key): Boolean {
+        if (postPlay && !controlsMode) {
+            when (key) {
+                Key.DirectionLeft -> postPlaySelected = (postPlaySelected - 1).coerceAtLeast(0)
+                Key.DirectionRight -> postPlaySelected = (postPlaySelected + 1).coerceAtMost(similar.lastIndex)
+                Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> openSimilar(postPlaySelected)
+                Key.DirectionUp -> postPlayDismissed = true
+                Key.DirectionDown -> Unit
+                else -> null
+            }?.let { return true }
+        }
         if (controlsMode && controls.isNotEmpty()) {
             when (key) {
                 Key.DirectionLeft -> moveSelection(-1)
@@ -444,7 +500,7 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
         }
 
         AnimatedVisibility(
-            visible = overlayVisible || errorText != null,
+            visible = (overlayVisible && !postPlay) || errorText != null,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.fillMaxSize(),
@@ -486,6 +542,23 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
 
         if (nearEnd) {
             Pill("▶  Premi OK per il prossimo episodio", Modifier.align(Alignment.BottomEnd).padding(40.dp))
+        }
+
+        AnimatedVisibility(
+            visible = postPlay,
+            enter = fadeIn() + slideInVertically { it / 4 },
+            exit = fadeOut(),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            val movie = (r as? PlayRequest.MovieReq)?.movie
+            PostPlayPanel(
+                source = movie?.name.orEmpty(),
+                titles = similar,
+                selected = postPlaySelected,
+                ended = movieEnded,
+                onOpen = { openSimilar(it) },
+                onDismiss = { postPlayDismissed = true },
+            )
         }
 
         // Indicazione del volume quando lo cambi.

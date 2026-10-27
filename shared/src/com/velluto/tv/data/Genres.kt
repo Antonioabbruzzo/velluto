@@ -168,6 +168,26 @@ object Recommender {
             .toList()
     }
 
+    /**
+     * Fine film: titoli simili a [source] (stessi generi, meglio se della stessa categoria e con voto
+     * alto), esclusi quelli già visti o in lista e i contenuti per adulti.
+     */
+    fun similarTo(catalog: Catalog, source: Title, lib: LibraryState, limit: Int = 18): List<Title> {
+        if (catalog.isAdult(source)) return emptyList()
+        val genres = genreKeysOf(source, catalog)
+        if (genres.isEmpty()) return emptyList()
+        val weights = genres.associateWith { 1.0 }
+        val exclude = seen(catalog, lib).map { it.first.key }.toSet() + source.key
+        return candidates(catalog, exclude)
+            .map { it to score(it, weights, catalog) + if (it.categoryId == source.categoryId && it::class == source::class) 0.5 else 0.0 }
+            .filter { it.second > 0.0 }
+            .sortedByDescending { it.second }
+            .distinctBy { it.first.key }
+            .take(limit)
+            .map { it.first }
+            .toList()
+    }
+
     /** "Perché hai guardato X": per gli ultimi titoli visti, altri titoli degli stessi generi. */
     fun becauseYouWatched(catalog: Catalog, lib: LibraryState, rows: Int = 3, perRow: Int = 30): List<Pair<Title, List<Title>>> {
         val seen = seen(catalog, lib)
