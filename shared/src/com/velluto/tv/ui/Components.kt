@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.infiniteRepeatable
@@ -306,7 +307,8 @@ fun Hero(
             animationSpec = infiniteRepeatable(tween(18_000, easing = LinearEasing), RepeatMode.Reverse),
             label = "heroZoom",
         )
-        Box(Modifier.fillMaxSize()) {
+        // clipToBounds: lo zoom resta dentro il riquadro, non deborda sul menu o sulle file.
+        Box(Modifier.fillMaxSize().clipToBounds()) {
             if (t != null) {
                 RemoteImage(
                     url = t.backdrop.ifBlank { t.image },
