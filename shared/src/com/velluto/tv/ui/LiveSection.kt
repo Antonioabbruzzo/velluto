@@ -1,5 +1,10 @@
 package com.velluto.tv.ui
 
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.border
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Size
@@ -61,6 +66,7 @@ import java.util.Locale
 /** Id della categoria virtuale "Top canali" (non esiste nel provider). */
 private const val TOP_ID = "velluto-top"
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun LiveSection(vm: AppViewModel, catalog: Catalog) {
     // "★ Top canali": selezione dei canali italiani principali, prima di tutte le categorie del provider.
@@ -95,6 +101,7 @@ fun LiveSection(vm: AppViewModel, catalog: Catalog) {
     var focused by remember { mutableStateOf<LiveChannel?>(null) }
     var epg by remember { mutableStateOf<List<EpgEntry>>(emptyList()) }
     val catFr = remember { FocusRequester() }
+    val channelsFr = remember { FocusRequester() }
 
     LaunchedEffect(focused) {
         val ch = focused ?: return@LaunchedEffect
@@ -112,7 +119,10 @@ fun LiveSection(vm: AppViewModel, catalog: Catalog) {
     }
     Row(Modifier.fillMaxWidth().weight(1f).padding(top = 8.dp)) {
         LazyColumn(
-            Modifier.width(250.dp).fillMaxHeight(),
+            Modifier.width(250.dp).fillMaxHeight()
+                // ▶ dalle categorie va dritto ai canali, senza passare dal campo "Cerca canale".
+                .focusProperties { exit = { if (it == FocusDirection.Right) channelsFr else FocusRequester.Default } }
+                .focusGroup(),
             contentPadding = PaddingValues(vertical = 8.dp, horizontal = 12.dp),
         ) {
             itemsIndexed(cats) { i, c ->
@@ -173,7 +183,7 @@ fun LiveSection(vm: AppViewModel, catalog: Catalog) {
                 )
             }
             LazyColumn(
-                Modifier.weight(1f).fillMaxWidth(),
+                Modifier.weight(1f).fillMaxWidth().focusRequester(channelsFr).focusGroup(),
                 contentPadding = PaddingValues(vertical = 8.dp, horizontal = 12.dp),
             ) {
                 if (showingTop) {
