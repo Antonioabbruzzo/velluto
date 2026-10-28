@@ -13,6 +13,9 @@ import java.io.File
  *                               contentScale: ContentScale = ContentScale.Crop, alignment: Alignment = Alignment.Center)
  *   @Composable fun rememberVideoEngine(): VideoEngine
  *   @Composable fun VideoSurface(engine: VideoEngine, modifier: Modifier)
+ * e i caratteri (file in shared/res/font):
+ *   val VellutoDisplayFont: FontFamily   (titoli)
+ *   val VellutoBodyFont: FontFamily      (testo)
  */
 
 data class UpdateInfo(val versionCode: Int, val versionName: String, val downloadUrl: String)

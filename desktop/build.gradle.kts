@@ -37,6 +37,8 @@ val generateBuildInfo by tasks.registering {
 kotlin {
     jvmToolchain(17)
     sourceSets["main"].kotlin.srcDir("../shared/src")
+    // Caratteri in comune con la versione Fire TV, letti come risorse "font/....ttf".
+    sourceSets["main"].resources.srcDir("../shared/res")
     sourceSets["main"].kotlin.srcDir(generateBuildInfo)
 }
 

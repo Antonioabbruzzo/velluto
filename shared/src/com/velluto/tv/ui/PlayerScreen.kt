@@ -26,7 +26,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -193,10 +192,15 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
         showOverlay()
     }
 
+    // Il contenuto attuale è già partito almeno una volta: da lì in poi un'attesa è solo un "buffering".
+    var started by remember { mutableStateOf(false) }
+    LaunchedEffect(isPlaying) { if (isPlaying) started = true }
+
     // Carica il contenuto ogni volta che cambia (episodio successivo, cambio canale, fallback m3u8).
     LaunchedEffect(req, liveExt) {
         errorText = null
         countdown = null
+        started = false
         val r = req
         val (url, start) = when (r) {
             is PlayRequest.Live -> client.liveUrl(r.channels[r.index].id, liveExt) to 0L
@@ -502,12 +506,16 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
     ) {
         VideoSurface(engine, Modifier.fillMaxSize())
 
-        if (buffering && errorText == null) {
-            CircularProgressIndicator(color = Palette.Accent, modifier = Modifier.align(Alignment.Center).size(56.dp))
+        // Canale live che sta partendo: al posto del video nero, logo e nome del canale.
+        val tuning = r is PlayRequest.Live && !started && errorText == null
+        if (tuning) {
+            LiveTuning(vm, r as PlayRequest.Live, epg)
+        } else if (buffering && errorText == null) {
+            VellutoLoader(Modifier.align(Alignment.Center).width(220.dp))
         }
 
         AnimatedVisibility(
-            visible = (overlayVisible && !postPlay) || errorText != null,
+            visible = (overlayVisible && !postPlay && !tuning) || errorText != null,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.fillMaxSize(),

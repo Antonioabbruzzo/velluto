@@ -1,8 +1,8 @@
 package com.velluto.tv.ui
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.BringIntoViewSpec
@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -44,6 +45,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -55,18 +57,21 @@ import com.velluto.tv.platform.RemoteImage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private val CARD_HEIGHT = 200.dp
-private val CARD_WIDTH = 133.dp // 2:3, locandina verticale
-private val CARD_WIDTH_EXPANDED = 356.dp // 16:9, immagine panoramica
+private val CARD_HEIGHT = 180.dp
+private val CARD_WIDTH = 120.dp // 2:3, locandina verticale
+private val CARD_WIDTH_EXPANDED = 320.dp // 16:9, immagine panoramica
 private val CARD_SPACING = 12.dp
 
 /** Ritardo prima che il passaggio del mouse allarghi una card (evita il "lampeggio" passando sopra veloci). */
 private const val HOVER_DELAY_MS = 250L
 
+/** Ritardo prima che lo sfondo segua la card selezionata: scorrendo veloci non si caricano immagini a vuoto. */
+private const val BACKDROP_DELAY_MS = 350L
+
 /**
  * Pagina a file nello stile del nuovo Netflix per TV (Home, Serie TV, Film, Per te):
- * niente banner in alto, la card selezionata si allarga in formato panoramico e sotto
- * la fila selezionata compaiono genere, anno e trama.
+ * in alto titolo, voto e trama della card selezionata sopra la sua immagine, che riempie
+ * la parte alta della pagina; la card selezionata si allarga in formato panoramico.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -79,7 +84,7 @@ fun NetflixBrowse(
 ) {
     val visibleRows = rows.filter { it.items.isNotEmpty() }
     val listState = rememberLazyListState()
-    // Fila e titolo selezionati col telecomando/tastiera: la trama compare sotto questa fila.
+    // Fila e titolo selezionati col telecomando/tastiera: titolo e trama in alto seguono questa card.
     var activeRow by remember { mutableIntStateOf(0) }
     var activeItem by remember { mutableStateOf(visibleRows.firstOrNull()?.items?.firstOrNull()) }
     val fr = remember { FocusRequester() }
@@ -93,6 +98,13 @@ fun NetflixBrowse(
     var expandedId by remember { mutableStateOf<String?>(null) }
     var expandedByMouse by remember { mutableStateOf(false) }
 
+    // Lo sfondo cambia solo quando ti fermi su una card.
+    var backdropItem by remember { mutableStateOf(activeItem) }
+    LaunchedEffect(activeItem?.id) {
+        if (backdropItem != null) delay(BACKDROP_DELAY_MS)
+        backdropItem = activeItem
+    }
+
     // La fila selezionata resta sempre in alto. Solo il telecomando/tastiera la sposta: il mouse no.
     LaunchedEffect(activeRow) { if (visibleRows.isNotEmpty()) listState.scrollToItem(activeRow) }
     // Trama dei film scaricata quando ti fermi su una card.
@@ -102,61 +114,64 @@ fun NetflixBrowse(
         vm.loadExtra(t)
     }
 
-    // Disattiva lo scorrimento automatico di Compose quando cambia la selezione: lo gestiamo noi
-    // (fila selezionata ferma in alto, card selezionata ferma a sinistra). Insieme all'allargamento
-    // della card, quello automatico faceva "ballare" le file.
-    CompositionLocalProvider(LocalBringIntoViewSpec provides NoAutoScroll) {
-    Column(Modifier.fillMaxSize()) {
-        header?.invoke()
-        if (visibleRows.isEmpty()) {
-            EmptyMessage(
-                if (vm.loadingParts.isNotEmpty()) "Contenuti in arrivo dal provider…\nLa prima volta può richiedere qualche minuto."
-                else "Nessun contenuto disponibile"
-            )
-        } else {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(top = if (header == null) 28.dp else 8.dp, bottom = 420.dp),
-            ) {
-                itemsIndexed(visibleRows) { rowIndex, row ->
-                    NetflixRow(
-                        vm = vm,
-                        row = row,
-                        isActive = rowIndex == activeRow,
-                        activeItem = activeItem,
-                        focusId = focusId,
-                        focusRequester = fr,
-                        expandedId = expandedId,
-                        expandedByMouse = expandedByMouse,
-                        onItemFocused = { item ->
-                            focusedId = item.id
-                            expandedId = item.id
-                            expandedByMouse = false
-                            activeRow = rowIndex
-                            activeItem = item
-                            vm.lastFocus[sectionKey] = item.id
-                        },
-                        onItemBlurred = { item ->
-                            if (focusedId == item.id) focusedId = null
-                            if (expandedId == item.id && !expandedByMouse) expandedId = null
-                        },
-                        onItemHoverSettled = { item ->
-                            expandedId = item.id
-                            expandedByMouse = true
-                        },
-                        onRowHoverEnd = {
-                            // Il mouse è uscito dalla fila: torna allargata la card selezionata con le frecce.
-                            if (expandedByMouse && row.items.any { it.id == expandedId }) {
-                                expandedId = focusedId
-                                expandedByMouse = false
-                            }
-                        },
+    Box(Modifier.fillMaxSize()) {
+        AmbientBackdrop(backdropItem?.let { it.title.backdrop.ifBlank { it.image } })
+        // Disattiva lo scorrimento automatico di Compose quando cambia la selezione: lo gestiamo noi
+        // (fila selezionata ferma in alto, card selezionata ferma a sinistra). Insieme all'allargamento
+        // della card, quello automatico faceva "ballare" le file.
+        CompositionLocalProvider(LocalBringIntoViewSpec provides NoAutoScroll) {
+            Column(Modifier.fillMaxSize()) {
+                header?.invoke()
+                if (visibleRows.isEmpty()) {
+                    EmptyMessage(
+                        if (vm.loadingParts.isNotEmpty()) "Contenuti in arrivo dal provider…\nLa prima volta può richiedere qualche minuto."
+                        else "Nessun contenuto disponibile"
                     )
+                } else {
+                    ItemInfo(vm, activeItem, compact = header != null)
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(top = 4.dp, bottom = 420.dp),
+                    ) {
+                        itemsIndexed(visibleRows) { rowIndex, row ->
+                            NetflixRow(
+                                vm = vm,
+                                row = row,
+                                isActive = rowIndex == activeRow,
+                                focusId = focusId,
+                                focusRequester = fr,
+                                expandedId = expandedId,
+                                expandedByMouse = expandedByMouse,
+                                onItemFocused = { item ->
+                                    focusedId = item.id
+                                    expandedId = item.id
+                                    expandedByMouse = false
+                                    activeRow = rowIndex
+                                    activeItem = item
+                                    vm.lastFocus[sectionKey] = item.id
+                                },
+                                onItemBlurred = { item ->
+                                    if (focusedId == item.id) focusedId = null
+                                    if (expandedId == item.id && !expandedByMouse) expandedId = null
+                                },
+                                onItemHoverSettled = { item ->
+                                    expandedId = item.id
+                                    expandedByMouse = true
+                                },
+                                onRowHoverEnd = {
+                                    // Il mouse è uscito dalla fila: torna allargata la card selezionata con le frecce.
+                                    if (expandedByMouse && row.items.any { it.id == expandedId }) {
+                                        expandedId = focusedId
+                                        expandedByMouse = false
+                                    }
+                                },
+                            )
+                        }
+                    }
                 }
             }
         }
-    }
     }
     if (visibleRows.isNotEmpty()) RequestFocus(fr, sectionKey)
 }
@@ -172,7 +187,6 @@ private fun NetflixRow(
     vm: AppViewModel,
     row: BrowseRow,
     isActive: Boolean,
-    activeItem: RowItem?,
     focusId: String?,
     focusRequester: FocusRequester,
     expandedId: String?,
@@ -210,7 +224,7 @@ private fun NetflixRow(
     }
     val openAll = row.openAll
 
-    Column(Modifier.fillMaxWidth()) {
+    Column(Modifier.fillMaxWidth().padding(bottom = 14.dp)) {
         RowTitle(row.title, openAll?.let { g -> { vm.openGenreEntry(g) } }, selectable = isActive)
         Box(Modifier.hoverable(rowInteraction)) {
             LazyRow(
@@ -263,7 +277,6 @@ private fun NetflixRow(
                 }
             }
         }
-        if (isActive) ItemInfo(vm, activeItem)
     }
 }
 
@@ -273,7 +286,7 @@ private fun ExpandingCard(
     vm: AppViewModel,
     item: RowItem,
     expanded: Boolean,
-    /** Allargata col mouse: genere, anno e trama dentro la card (la riga sotto segue solo il telecomando). */
+    /** Allargata col mouse: genere, anno e trama dentro la card (la parte in alto segue solo il telecomando). */
     showDetailsInside: Boolean,
     focusRequester: FocusRequester?,
     onFocusChange: (Boolean) -> Unit,
@@ -286,7 +299,7 @@ private fun ExpandingCard(
     LaunchedEffect(showDetailsInside) { if (showDetailsInside) vm.loadExtra(item.title) }
     // Nessuna animazione di larghezza: la card si allarga e si stringe all'istante, così niente si muove.
     val width = if (expanded) CARD_WIDTH_EXPANDED else CARD_WIDTH
-    val shape = RoundedCornerShape(10.dp)
+    val shape = RoundedCornerShape(8.dp)
     Box(
         Modifier
             .width(width)
@@ -318,36 +331,23 @@ private fun ExpandingCard(
         if (wide) {
             Box(
                 Modifier.fillMaxSize().background(
-                    Brush.verticalGradient(0.3f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.9f))
+                    Brush.verticalGradient(0.35f to Color.Transparent, 1f to Palette.Background.copy(alpha = 0.92f))
                 )
             )
-            Column(Modifier.align(Alignment.BottomStart).padding(14.dp)) {
+            Column(Modifier.align(Alignment.BottomStart).padding(start = 14.dp, end = 14.dp, bottom = 16.dp)) {
                 Text(
-                    if (t is Series) "SERIE" else "FILM",
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(AccentGradient)
-                        .padding(horizontal = 6.dp, vertical = 1.dp),
-                    color = Color.White,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 1.sp,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    t.name,
-                    color = Color.White,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.ExtraBold,
+                    t.name.uppercase(),
+                    color = Palette.Text,
+                    style = displayStyle(28.sp, FontWeight.ExtraBold),
                     maxLines = if (showDetailsInside) 1 else 2,
                     overflow = TextOverflow.Ellipsis,
-                    lineHeight = 26.sp,
                 )
                 if (showDetailsInside) {
                     val extra = vm.extras[t.key]
                     val meta = metaLine(t, extra)
+                    Spacer(Modifier.height(4.dp))
                     if (meta.isNotBlank()) {
-                        Text(meta, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        Text(meta, color = Palette.Text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                     }
                     val plot = t.plot.ifBlank { extra?.plot.orEmpty() }
                     if (plot.isNotBlank()) {
@@ -362,10 +362,10 @@ private fun ExpandingCard(
                     .align(Alignment.TopStart)
                     .padding(8.dp)
                     .clip(RoundedCornerShape(4.dp))
-                    .background(Color.Black.copy(alpha = 0.75f))
+                    .background(Palette.Background.copy(alpha = 0.78f))
                     .padding(horizontal = 6.dp, vertical = 2.dp),
             ) {
-                Text(item.label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                Text(item.label, color = Palette.Text, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
             }
         }
         if (item.progress != null) {
@@ -374,35 +374,72 @@ private fun ExpandingCard(
     }
 }
 
-/** "Dramma, Mistero  •  2023  •  Serie TV  •  91% voto" */
-private fun metaLine(t: Title, extra: TitleExtra?): String {
+/** Voto (a parte, in ottone) e il resto: genere, anno, tipo o durata. */
+private fun metaParts(t: Title, extra: TitleExtra?): Pair<String?, List<String>> {
     val genre = (t as? Series)?.genre?.takeIf { it.isNotBlank() } ?: extra?.genre.orEmpty()
     val year = t.year.ifBlank { extra?.year.orEmpty() }
     val score = t.rating.toDoubleOrNull()?.takeIf { it > 0 }?.let { "${(it * 10).toInt()}% voto" }
-    return listOfNotNull(
+    return score to listOfNotNull(
         genre.takeIf { it.isNotBlank() },
         year.takeIf { it.isNotBlank() },
         if (t is Series) "Serie TV" else extra?.duration?.takeIf { it.isNotBlank() } ?: "Film",
-        score,
-    ).joinToString("  •  ")
+    )
 }
 
-/** Sotto la fila selezionata: genere · anno · tipo · voto, e la trama. */
+/** "91% voto  •  Dramma, Mistero  •  2023  •  Serie TV" */
+private fun metaLine(t: Title, extra: TitleExtra?): String {
+    val (score, rest) = metaParts(t, extra)
+    return (listOfNotNull(score) + rest).joinToString("  •  ")
+}
+
+/** In alto: titolo grande, voto, genere, anno e trama della card selezionata. */
 @Composable
-private fun ItemInfo(vm: AppViewModel, item: RowItem?) {
-    val t = item?.title ?: return
+private fun ItemInfo(vm: AppViewModel, item: RowItem?, compact: Boolean) {
+    val t = item?.title
+    // Altezza fissa: titoli e trame di lunghezza diversa non fanno saltare le file sotto.
+    Box(
+        Modifier
+            .padding(start = 40.dp, end = 40.dp, top = if (compact) 4.dp else 24.dp, bottom = 6.dp)
+            .height(if (compact) 140.dp else 184.dp)
+            .fillMaxWidth(0.62f),
+    ) {
+        if (t != null) TitleInfo(vm, t, compact, Modifier.align(Alignment.BottomStart))
+    }
+}
+
+@Composable
+private fun TitleInfo(vm: AppViewModel, t: Title, compact: Boolean, modifier: Modifier) {
+    // A ogni nuova card il testo compare salendo appena: un solo movimento breve.
+    val enter = remember(t.key) { Animatable(0f) }
+    LaunchedEffect(t.key) { enter.animateTo(1f, tween(260)) }
     val extra = vm.extras[t.key]
     val plot = t.plot.ifBlank { extra?.plot.orEmpty() }
-    // Altezza fissa: trame di lunghezza diversa non fanno saltare le file sotto.
-    Column(Modifier.padding(start = 40.dp, end = 40.dp, top = 2.dp, bottom = 18.dp).height(96.dp).fillMaxWidth(0.62f)) {
-        Text(metaLine(t, extra), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    val (score, rest) = metaParts(t, extra)
+    Column(
+        modifier.graphicsLayer {
+            alpha = enter.value
+            translationY = (1f - enter.value) * 10.dp.toPx()
+        },
+    ) {
+        Text(
+            t.name.uppercase(),
+            color = Palette.Text,
+            style = displayStyle(if (compact) 46.sp else 60.sp),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (score != null) Text(score, color = Palette.BrassLight, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            rest.forEach { Text(it, color = Color(0xFFD8D0C8), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
+        }
         Spacer(Modifier.height(6.dp))
         Text(
             plot.ifBlank { "Trama in arrivo…" },
             color = Palette.TextDim,
             fontSize = 14.sp,
             lineHeight = 20.sp,
-            maxLines = 3,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
     }

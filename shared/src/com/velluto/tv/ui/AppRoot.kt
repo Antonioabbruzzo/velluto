@@ -1,8 +1,6 @@
 package com.velluto.tv.ui
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
@@ -35,10 +33,7 @@ fun AppRoot(vm: AppViewModel) {
                 content() // il video resta a tutto schermo
             } else {
                 // Menu laterale sempre visibile: Home e schede di serie e film.
-                Row(Modifier.fillMaxSize()) {
-                    AppSideMenu(vm)
-                    Box(Modifier.weight(1f).fillMaxHeight()) { content() }
-                }
+                WithSideMenu(vm, content)
             }
         }
     }

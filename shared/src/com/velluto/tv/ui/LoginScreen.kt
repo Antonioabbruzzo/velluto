@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.CircularProgressIndicator
+
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -29,12 +29,19 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.TextUnit
+
+/** Il marchio VELLUTO, in avorio con le lettere larghe. */
+@Composable
+fun VellutoWordmark(size: TextUnit) {
+    Text("VELLUTO", color = Palette.Text, style = displayStyle(size), letterSpacing = size * 0.08f)
+}
 
 @Composable
 private fun loginFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedTextColor = Color.White,
     unfocusedTextColor = Color.White,
-    focusedBorderColor = Color.White,
+    focusedBorderColor = Palette.Text,
     unfocusedBorderColor = Palette.TextDim,
     focusedLabelColor = Color.White,
     unfocusedLabelColor = Palette.TextDim,
@@ -52,10 +59,8 @@ fun LoginScreen(vm: AppViewModel) {
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Row {
-                Text("VELL", color = Palette.Accent, fontSize = 44.sp, fontWeight = FontWeight.Black)
-                Text("UTO", color = Color.White, fontSize = 44.sp, fontWeight = FontWeight.Black)
-            }
+            VellutoWordmark(72.sp)
+            Spacer(Modifier.height(10.dp))
             Text("Accedi con i dati del tuo provider", color = Palette.TextDim, fontSize = 15.sp)
             Spacer(Modifier.height(24.dp))
             OutlinedTextField(
@@ -84,7 +89,7 @@ fun LoginScreen(vm: AppViewModel) {
             )
             Spacer(Modifier.height(20.dp))
             if (busy) {
-                CircularProgressIndicator(color = Palette.Accent)
+                VellutoLoader(Modifier.width(220.dp))
             } else {
                 TvButton(
                     "Accedi",
@@ -125,17 +130,14 @@ fun LoadingScreen(vm: AppViewModel) {
                 RequestFocus(fr, s)
             }
             else -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Row {
-                    Text("VELL", color = Palette.Accent, fontSize = 52.sp, fontWeight = FontWeight.Black)
-                    Text("UTO", color = Color.White, fontSize = 52.sp, fontWeight = FontWeight.Black)
-                }
-                Spacer(Modifier.height(20.dp))
-                CircularProgressIndicator(color = Palette.Accent)
-                Spacer(Modifier.height(12.dp))
+                VellutoWordmark(96.sp)
+                Spacer(Modifier.height(26.dp))
+                VellutoLoader(Modifier.width(300.dp))
+                Spacer(Modifier.height(16.dp))
                 Text(
                     (s as? LoadState.Loading)?.message ?: "Caricamento…",
                     color = Palette.TextDim,
-                    fontSize = 14.sp,
+                    fontSize = 15.sp,
                 )
                 // Sempre disponibile: se il provider non risponde non si resta bloccati qui.
                 Spacer(Modifier.height(28.dp))

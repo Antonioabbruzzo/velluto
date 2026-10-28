@@ -47,7 +47,6 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.ThumbUp
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -73,6 +72,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextAlign
 import com.velluto.tv.data.newest
 import com.velluto.tv.data.Catalog
 import com.velluto.tv.data.Category
@@ -113,14 +113,30 @@ private fun Section.menuSection(): Section = when (this) {
  * Scegliendo una voce da una scheda si torna alla Home su quella sezione.
  */
 @Composable
-fun AppSideMenu(vm: AppViewModel) {
+fun AppSideMenu(vm: AppViewModel, modifier: Modifier = Modifier) {
     var menuHasFocus by remember { mutableStateOf(false) }
     SideMenu(
         current = vm.section,
         expanded = menuHasFocus,
         onFocusChange = { menuHasFocus = it },
         onSelect = { section -> vm.openSection(section) },
+        modifier = modifier,
     )
+}
+
+/** Larghezza del menu chiuso: la pagina comincia qui. */
+private val MENU_CLOSED = 64.dp
+
+/**
+ * Pagina con il menu laterale. Il menu sta sopra la pagina: aprendosi la copre
+ * senza spostarla né stringerla.
+ */
+@Composable
+fun WithSideMenu(vm: AppViewModel, content: @Composable () -> Unit) {
+    Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().padding(start = MENU_CLOSED)) { content() }
+        AppSideMenu(vm, Modifier.align(Alignment.CenterStart))
+    }
 }
 
 @Composable
@@ -340,36 +356,45 @@ private fun SideMenu(
     expanded: Boolean,
     onFocusChange: (Boolean) -> Unit,
     onSelect: (Section) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     // Il menu si apre col telecomando (focus) o passandoci sopra col mouse.
     val menuInteraction = remember { MutableInteractionSource() }
     val hovered by menuInteraction.collectIsHoveredAsState()
     val open = expanded || hovered
-    val width by animateDpAsState(if (open) 240.dp else 64.dp, label = "menuWidth")
+    val width by animateDpAsState(if (open) 260.dp else MENU_CLOSED, label = "menuWidth")
     val requesters = remember { menu.associate { it.section to FocusRequester() } }
     val parent = current.menuSection()
     Column(
-        Modifier
+        modifier
             .width(width)
             .fillMaxHeight()
-            // Pannello in vetro scuro: aperto diventa quasi opaco e copre la pagina senza spostarla.
+            // Chiuso sfuma nella pagina; aperto diventa quasi opaco e la copre senza spostarla.
             .background(
                 Brush.horizontalGradient(
-                    if (open) listOf(Color(0xF5100A0C), Color(0xEB0B0B0F))
-                    else listOf(Color(0x99000000), Color(0x40000000)),
+                    if (open) listOf(Color(0xF7060405), Color(0xEB060405))
+                    else listOf(Color(0xB3000000), Color(0x00000000)),
                 )
             )
-            .drawBehind {
-                drawLine(Palette.Stroke, Offset(size.width - 1f, 0f), Offset(size.width - 1f, size.height), 1f)
-            }
             .hoverable(menuInteraction)
             .onFocusChanged { onFocusChange(it.hasFocus) }
             // Entrando nel menu il cursore va sulla sezione in cui ti trovi, non sulla voce più vicina.
             .focusProperties { enter = { requesters[parent] ?: FocusRequester.Default } }
             .focusGroup()
             .verticalScroll(rememberScrollState())
-            .padding(top = 56.dp, bottom = 24.dp),
+            .padding(top = 24.dp, bottom = 24.dp),
     ) {
+        // Il marchio: "V" a menu chiuso, "VELLUTO" a menu aperto.
+        Text(
+            if (open) "VELLUTO" else "V",
+            modifier = Modifier.padding(start = if (open) 22.dp else 0.dp).fillMaxWidth().height(40.dp),
+            color = Palette.AccentBright,
+            style = displayStyle(30.sp),
+            letterSpacing = if (open) 3.sp else 0.sp,
+            textAlign = if (open) TextAlign.Start else TextAlign.Center,
+            maxLines = 1,
+        )
+        Spacer(Modifier.height(16.dp))
         menu.forEach { entry ->
             MenuItem(
                 entry,
@@ -394,8 +419,8 @@ private fun MenuItem(
     val focused = interaction.isHighlighted()
     val color by animateColorAsState(
         when {
-            focused -> Color.Black
-            selected -> Color.White
+            focused -> Palette.Background
+            selected -> Palette.Text
             else -> Palette.TextDim
         },
         tween(FOCUS_ANIM_MS),
@@ -403,8 +428,8 @@ private fun MenuItem(
     )
     val bg by animateColorAsState(
         when {
-            focused -> Color.White
-            selected -> Palette.Accent.copy(alpha = 0.16f)
+            focused -> Palette.Text
+            selected -> Palette.Accent.copy(alpha = 0.24f)
             else -> Color.Transparent
         },
         tween(FOCUS_ANIM_MS),
@@ -436,7 +461,7 @@ private fun MenuItem(
         Icon(
             entry.icon,
             contentDescription = entry.label,
-            tint = if (selected && !focused) Palette.Accent else color,
+            tint = if (selected && !focused) Palette.AccentBright else color,
             modifier = Modifier.size(20.dp),
         )
         if (expanded) {
@@ -444,8 +469,8 @@ private fun MenuItem(
             Text(
                 entry.label,
                 color = color,
-                fontSize = 15.sp,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                fontSize = 17.sp,
+                fontWeight = if (selected || focused) FontWeight.Bold else FontWeight.Medium,
                 maxLines = 1,
             )
         }
@@ -511,7 +536,7 @@ private fun rememberCachedRows(
 @Composable
 private fun LoadingRows() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        CircularProgressIndicator(color = Palette.Accent)
+        VellutoLoader(Modifier.width(220.dp))
     }
 }
 
@@ -593,7 +618,7 @@ private fun ForYouSection(vm: AppViewModel, suggestions: Suggestions?) {
     val r = remember(suggestions) { suggestions?.let { forYouRows(vm, it) } }
     when {
         r == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = Palette.Accent)
+            VellutoLoader(Modifier.width(220.dp))
         }
         r.isEmpty() -> EmptyMessage(
             "Qui troverai i suggerimenti scelti per te.\nGuarda qualche serie o film, oppure aggiungili a \"La mia lista\"."
@@ -771,7 +796,7 @@ private fun CatalogStatusBanner(vm: AppViewModel, modifier: Modifier) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (loading) {
-            CircularProgressIndicator(color = Palette.Accent, strokeWidth = 2.dp, modifier = Modifier.size(14.dp))
+            VellutoLoader(Modifier.width(40.dp), thickness = 2.dp)
             Spacer(Modifier.width(10.dp))
         }
         Text(text, color = if (loading) Palette.Text else Palette.Accent, fontSize = 12.sp)

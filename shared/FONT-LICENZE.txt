@@ -1,0 +1,4 @@
+Caratteri in shared/res/font, entrambi con licenza SIL Open Font License 1.1 (https://openfontlicense.org):
+- Big Shoulders Display (velluto_display_*.ttf), Copyright The Big Shoulders Project Authors
+- Figtree (velluto_body_*.ttf), Copyright The Figtree Project Authors
+Scaricati da Google Fonts.

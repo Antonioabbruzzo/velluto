@@ -178,10 +178,51 @@ fun PosterCard(
 
 @Composable
 fun ProgressBar(fraction: Float, modifier: Modifier = Modifier) {
-    Box(modifier.height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x55FFFFFF))) {
+    // Rosso velluto con la punta in ottone.
+    Box(modifier.height(4.dp).background(Palette.Text.copy(alpha = 0.18f))) {
         Box(
             Modifier.fillMaxHeight().fillMaxWidth(fraction.coerceIn(0f, 1f))
-                .clip(RoundedCornerShape(2.dp)).background(AccentGradient)
+                .background(Brush.horizontalGradient(0f to Palette.AccentBright, 0.94f to Palette.AccentBright, 1f to Palette.Brass))
+        )
+    }
+}
+
+/**
+ * Sfondo vivo delle pagine a file: l'immagine del titolo selezionato riempie la parte alta
+ * a destra e sfuma nel nero; cambiando titolo passa all'immagine nuova in dissolvenza.
+ */
+@Composable
+fun AmbientBackdrop(url: String?, modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxSize()) {
+        Crossfade(targetState = url, animationSpec = tween(500), label = "ambient") { u ->
+            Box(Modifier.fillMaxSize()) {
+                if (!u.isNullOrBlank()) {
+                    RemoteImage(
+                        url = u,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        alignment = Alignment.TopCenter,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .fillMaxWidth(0.8f)
+                            .fillMaxHeight(0.74f)
+                            .graphicsLayer { alpha = 0.85f },
+                    )
+                }
+            }
+        }
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.horizontalGradient(
+                    0f to Palette.Background, 0.24f to Palette.Background,
+                    0.5f to Palette.Background.copy(alpha = 0.6f), 1f to Color.Transparent,
+                )
+            )
+        )
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.verticalGradient(0f to Color.Transparent, 0.4f to Color.Transparent, 0.74f to Palette.Background)
+            )
         )
     }
 }
@@ -199,8 +240,6 @@ internal fun RowTitle(title: String, onOpenAll: (() -> Unit)?, selectable: Boole
         Modifier.padding(start = 40.dp, top = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(width = 4.dp, height = 18.dp).clip(RoundedCornerShape(2.dp)).background(AccentGradient))
-        Spacer(Modifier.width(10.dp))
         Text(
             title,
             modifier = if (onOpenAll != null) {
@@ -209,26 +248,26 @@ internal fun RowTitle(title: String, onOpenAll: (() -> Unit)?, selectable: Boole
                     .pointerInput(onOpenAll) { detectTapGestures { onOpenAll() } }
             } else Modifier,
             color = if (titleHovered) Color.White else Palette.Text,
-            fontSize = 17.sp,
+            fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
         )
         if (onOpenAll != null) {
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(8.dp))
             val interaction = remember { MutableInteractionSource() }
             val highlighted = interaction.isHighlighted() || titleHovered
+            // In ottone; selezionato diventa una pillola avorio come i pulsanti.
             Text(
                 "Vedi tutti  ›",
                 modifier = Modifier
                     .focusProperties { canFocus = selectable }
                     .clip(RoundedCornerShape(14.dp))
-                    .background(if (highlighted) Color.White else Palette.Glass)
-                    .border(1.dp, if (highlighted) Color.White else Palette.Stroke, RoundedCornerShape(14.dp))
+                    .background(if (highlighted) Palette.Text else Color.Transparent)
                     .hoverable(interaction)
                     .clickable(interactionSource = interaction, indication = null, onClick = onOpenAll)
                     .padding(horizontal = 10.dp, vertical = 3.dp),
-                color = if (highlighted) Color.Black else Palette.TextDim,
-                fontSize = 13.sp,
-                fontWeight = if (highlighted) FontWeight.Bold else FontWeight.Normal,
+                color = if (highlighted) Palette.Background else Palette.Brass,
+                fontSize = 14.sp,
+                fontWeight = if (highlighted) FontWeight.Bold else FontWeight.Medium,
             )
         }
     }
@@ -246,16 +285,17 @@ internal fun SeeAllCard(total: Int, width: Dp, aspect: Float, onClick: () -> Uni
             .aspectRatio(aspect)
             .focusRing(focused, shape)
             .clip(shape)
-            .background(if (focused) SolidColor(Color.White) else CardPlaceholder)
+            .background(if (focused) SolidColor(Palette.Text) else CardPlaceholder)
             .border(1.dp, Palette.Stroke, shape)
             .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
+        val fg = if (focused) Palette.Background else Palette.Text
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("›", color = if (focused) Color.Black else Color.White, fontSize = 36.sp, fontWeight = FontWeight.Bold)
-            Text("Vedi tutti", color = if (focused) Color.Black else Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-            Text("$total titoli", color = if (focused) Color.DarkGray else Palette.TextDim, fontSize = 12.sp)
+            Text("›", color = fg, fontSize = 36.sp, fontWeight = FontWeight.Bold)
+            Text("Vedi tutti", color = fg, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            Text("$total titoli", color = if (focused) Color(0xFF5A514B) else Palette.Brass, fontSize = 12.sp)
         }
     }
 }
@@ -344,14 +384,11 @@ fun Hero(
                         .height(132.dp),
                 ) {
                     Text(
-                        t.name,
-                        color = Color.White,
-                        fontSize = 32.sp,
-                        fontWeight = FontWeight.ExtraBold,
+                        t.name.uppercase(),
+                        color = Palette.Text,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        lineHeight = 36.sp,
-                        style = TextStyle(shadow = Shadow(Color.Black.copy(alpha = 0.7f), Offset(0f, 2f), 12f)),
+                        style = displayStyle(46.sp).copy(shadow = Shadow(Color.Black.copy(alpha = 0.7f), Offset(0f, 2f), 12f)),
                     )
                     Spacer(Modifier.height(4.dp))
                     MetaLine(year = t.year.ifBlank { more?.year.orEmpty() }, rating = t.rating, extra = meta)
@@ -375,7 +412,7 @@ fun MetaLine(year: String, rating: String, extra: String? = null) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         val score = rating.toDoubleOrNull()
         if (score != null && score > 0) {
-            Text("${(score * 10).toInt()}% voto", color = Palette.Good, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text("${(score * 10).toInt()}% voto", color = Palette.BrassLight, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         }
         if (year.isNotBlank()) Text(year, color = Palette.TextDim, fontSize = 13.sp)
         if (!extra.isNullOrBlank()) Text(extra, color = Palette.TextDim, fontSize = 13.sp, maxLines = 1)
@@ -388,7 +425,7 @@ fun BackButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     TvButton(text = "←  Indietro", onClick = onClick, modifier = modifier)
 }
 
-/** Pulsante in stile TV: bianco quando selezionato. */
+/** Pulsante in stile TV: avorio quando selezionato, con l'alone rosso sotto. */
 @Composable
 fun TvButton(
     text: String,
@@ -400,21 +437,21 @@ fun TvButton(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused = interaction.isHighlighted()
-    val shape = RoundedCornerShape(10.dp)
-    // Il principale (Riproduci) è rosso; selezionato qualsiasi pulsante diventa bianco.
+    val shape = RoundedCornerShape(8.dp)
+    // Il principale (Riproduci) è rosso velluto; selezionato qualsiasi pulsante diventa avorio.
     val whiteness by animateFloatAsState(if (focused) 1f else 0f, tween(FOCUS_ANIM_MS), label = "btn")
-    val fg = lerp(Color.White, Color.Black, whiteness)
+    val fg = lerp(Palette.Text, Palette.Background, whiteness)
     Row(
         modifier
             .optionalFocusRequester(focusRequester)
             .shadow(
-                if (focused) 16.dp else if (primary) 8.dp else 0.dp, shape, clip = false,
-                ambientColor = if (focused) Color.White else Palette.Accent,
-                spotColor = if (focused) Color.White else Palette.Accent,
+                if (focused) 18.dp else if (primary) 8.dp else 0.dp, shape, clip = false,
+                ambientColor = Palette.AccentBright,
+                spotColor = Palette.AccentBright,
             )
             .clip(shape)
-            .background(if (primary) AccentGradient else SolidColor(Color.White.copy(alpha = 0.1f)))
-            .background(Color.White.copy(alpha = whiteness))
+            .background(if (primary) AccentGradient else SolidColor(Palette.Text.copy(alpha = 0.08f)))
+            .background(Palette.Text.copy(alpha = whiteness))
             .border(1.dp, if (primary || focused) Color.Transparent else Palette.Stroke, shape)
             .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
@@ -430,7 +467,7 @@ fun TvButton(
 }
 
 /** Sfondo delle card mentre l'immagine carica: una sfumatura invece del grigio piatto. */
-internal val CardPlaceholder = Brush.verticalGradient(listOf(Color(0xFF24242E), Color(0xFF14141A)))
+internal val CardPlaceholder = Brush.verticalGradient(listOf(Color(0xFF261C1E), Color(0xFF140E10)))
 
 @Composable
 fun WatchedBadge(modifier: Modifier = Modifier) {

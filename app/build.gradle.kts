@@ -59,6 +59,8 @@ android {
     sourceSets {
         getByName("main") {
             java.srcDir("../shared/src")
+            // Caratteri in comune con la versione Windows (shared/res/font).
+            res.srcDir("../shared/res")
         }
     }
     lint {

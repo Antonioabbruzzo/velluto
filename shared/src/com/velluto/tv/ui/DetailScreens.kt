@@ -30,7 +30,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -71,7 +70,7 @@ private fun DetailBackground(image: String) {
             contentDescription = null,
             contentScale = ContentScale.Crop,
             alignment = Alignment.TopCenter,
-            modifier = Modifier.fillMaxSize().graphicsLayer { alpha = 0.55f },
+            modifier = Modifier.fillMaxSize().graphicsLayer { alpha = 0.75f },
         )
         Box(
             Modifier.fillMaxSize().background(
@@ -130,8 +129,8 @@ fun SeriesDetailScreen(vm: AppViewModel, series: Series, preloaded: SeriesDetail
                     BackButton(onClick = { vm.back() })
                     Spacer(Modifier.width(20.dp))
                     Text(
-                        series.name, color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold,
-                        lineHeight = 34.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        series.name.uppercase(), color = Palette.Text, style = displayStyle(48.sp),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
                 }
                 Spacer(Modifier.height(8.dp))
@@ -169,7 +168,7 @@ fun SeriesDetailScreen(vm: AppViewModel, series: Series, preloaded: SeriesDetail
                     RequestFocus(fr, error)
                 }
                 d == null -> Box(Modifier.padding(horizontal = 48.dp)) {
-                    CircularProgressIndicator(color = Palette.Accent)
+                    VellutoLoader(Modifier.width(220.dp))
                 }
                 else -> SeriesBody(vm, series, d, lib)
             }
@@ -364,8 +363,8 @@ fun MovieDetailScreen(vm: AppViewModel, movie: Movie, preloaded: MovieDetail? = 
                     BackButton(onClick = { vm.back() })
                     Spacer(Modifier.width(20.dp))
                     Text(
-                        movie.name, color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.ExtraBold,
-                        lineHeight = 38.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        movie.name.uppercase(), color = Palette.Text, style = displayStyle(52.sp),
+                        maxLines = 2, overflow = TextOverflow.Ellipsis,
                     )
                 }
                 Spacer(Modifier.height(8.dp))

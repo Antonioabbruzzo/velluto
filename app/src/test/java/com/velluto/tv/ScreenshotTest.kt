@@ -63,7 +63,7 @@ import com.velluto.tv.data.MovieDetail
 import com.velluto.tv.data.Progress
 import com.velluto.tv.data.Series
 import com.velluto.tv.data.SeriesDetail
-import com.velluto.tv.ui.AppSideMenu
+import com.velluto.tv.ui.WithSideMenu
 import com.velluto.tv.ui.AppViewModel
 import com.velluto.tv.ui.HomeScreen
 import com.velluto.tv.ui.LoginScreen
@@ -162,10 +162,7 @@ class ScreenshotTest {
     /** Come in AppRoot: menu laterale a sinistra e contenuto a destra. */
     @Composable
     private fun WithMenu(content: @Composable () -> Unit) {
-        androidx.compose.foundation.layout.Row(Modifier.fillMaxSize()) {
-            AppSideMenu(vm)
-            Box(Modifier.weight(1f)) { content() }
-        }
+        WithSideMenu(vm, content)
     }
 
     private fun settle() {
@@ -427,12 +424,7 @@ class ScreenshotTest {
         vm.section = Section.SERIES
         val s = Fake.series[0]
         // Come in AppRoot: menu laterale + scheda della serie.
-        show {
-            androidx.compose.foundation.layout.Row(Modifier.fillMaxSize()) {
-                AppSideMenu(vm)
-                Box(Modifier.weight(1f)) { SeriesDetailScreen(vm, s, Fake.seriesDetail(s)) }
-            }
-        }
+        show { WithMenu { SeriesDetailScreen(vm, s, Fake.seriesDetail(s)) } }
         capture("19a-scheda-con-menu")
         press(Key.DirectionLeft) // dal pulsante "Riprendi" al menu
         capture("19b-scheda-menu-aperto")
