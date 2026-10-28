@@ -193,8 +193,9 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
     }
 
     // Il contenuto attuale è già partito almeno una volta: da lì in poi un'attesa è solo un "buffering".
+    // Viene segnato dagli eventi del player (vedi listener sotto), non dal cambio di isPlaying:
+    // cambiando canale il player può restare "in riproduzione" e quel cambio non arriva mai.
     var started by remember { mutableStateOf(false) }
-    LaunchedEffect(isPlaying) { if (isPlaying) started = true }
 
     // Carica il contenuto ogni volta che cambia (episodio successivo, cambio canale, fallback m3u8).
     LaunchedEffect(req, liveExt) {
@@ -248,6 +249,7 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
         engine.listener = object : VideoEngine.Listener {
             override fun onPlayingChanged(playing: Boolean) {
                 isPlaying = playing
+                if (playing) started = true
                 // In pausa o in background salva subito. Subito dopo un cambio di episodio/canale
                 // il player può ancora riportare la posizione del contenuto precedente: in quel caso no.
                 if (!playing && System.currentTimeMillis() - loadedAt > 3_000) saveProgress()
@@ -255,6 +257,8 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
 
             override fun onBufferingChanged(isBuffering: Boolean) {
                 buffering = isBuffering
+                // Finito di caricare e già in riproduzione: il canale è partito.
+                if (!isBuffering && engine.isPlaying) started = true
             }
 
             override fun onEnded() {
