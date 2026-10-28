@@ -369,6 +369,21 @@ private fun SideMenu(
         modifier
             .width(width)
             .fillMaxHeight()
+            // Aperto: un velo scurisce anche la pagina a destra del menu, così i titoli dietro
+            // non restano tagliati di netto sul bordo del pannello.
+            .drawBehind {
+                if (open) {
+                    val veil = 420.dp.toPx()
+                    drawRect(
+                        Brush.horizontalGradient(
+                            listOf(Color(0xEB060405), Color(0x00060405)),
+                            startX = size.width, endX = size.width + veil,
+                        ),
+                        topLeft = Offset(size.width, 0f),
+                        size = Size(veil, size.height),
+                    )
+                }
+            }
             // Chiuso sfuma nella pagina; aperto diventa quasi opaco e la copre senza spostarla.
             .background(
                 Brush.horizontalGradient(
