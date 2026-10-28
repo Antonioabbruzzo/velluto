@@ -76,7 +76,9 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
     val engine = rememberVideoEngine()
 
     var req by remember { mutableStateOf(request) }
-    var liveExt by remember { mutableStateOf("ts") }
+    // Formato dei canali live: si parte da quello che ha funzionato l'ultima volta (lo ricorda il ViewModel).
+    var liveExt by remember { mutableStateOf(vm.liveExt) }
+    var liveFallbackTried by remember { mutableStateOf(false) }
     var isPlaying by remember { mutableStateOf(false) }
     var buffering by remember { mutableStateOf(true) }
     var positionMs by remember { mutableLongStateOf(0L) }
@@ -177,7 +179,8 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
         val r = req as? PlayRequest.Live ?: return
         val n = r.channels.size
         if (n == 0) return
-        liveExt = "ts"
+        liveExt = vm.liveExt
+        liveFallbackTried = false
         req = r.copy(index = ((r.index + delta) % n + n) % n)
     }
 
@@ -264,8 +267,12 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
             }
 
             override fun onError(message: String) {
-                if (req is PlayRequest.Live && liveExt == "ts") {
-                    liveExt = "m3u8" // alcuni provider accettano solo HLS
+                if (req is PlayRequest.Live && !liveFallbackTried) {
+                    // Alcuni provider accettano solo HLS (o solo TS): si prova l'altro formato e, se va,
+                    // dal canale successivo si parte direttamente da quello, senza riaspettare l'errore.
+                    liveFallbackTried = true
+                    liveExt = if (liveExt == "ts") "m3u8" else "ts"
+                    vm.liveExt = liveExt
                     return
                 }
                 errorText = "Impossibile riprodurre ($message)"

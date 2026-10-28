@@ -19,6 +19,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -103,11 +104,17 @@ fun rememberVideoEngine(): VideoEngine {
         val http = DefaultHttpDataSource.Factory()
             .setUserAgent(XtreamClient.USER_AGENT)
             .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(20_000)
-            .setReadTimeoutMs(30_000)
+            .setConnectTimeoutMs(10_000)
+            .setReadTimeoutMs(20_000)
+        // Parte appena c'è 1 secondo di video (di default ExoPlayer ne aspetta 2,5: nei canali live,
+        // che arrivano in tempo reale, si sentiva). Buffer massimo più piccolo: meno memoria sulle Firestick.
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(15_000, 40_000, 1_000, 2_500)
+            .build()
         ExoEngine(
             ExoPlayer.Builder(context)
                 .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(context, http)))
+                .setLoadControl(loadControl)
                 .build()
         )
     }

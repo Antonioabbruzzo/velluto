@@ -254,7 +254,9 @@ class VlcEngine : VideoEngine {
         }
 
     override fun load(url: String, startMs: Long) {
-        val options = mutableListOf(":http-user-agent=${XtreamClient.USER_AGENT}", ":network-caching=1500")
+        // Canali live: cache più corta, così partono prima (film e serie restano a 1,5 s, più stabili).
+        val caching = if ("/live/" in url) 1000 else 1500
+        val options = mutableListOf(":http-user-agent=${XtreamClient.USER_AGENT}", ":network-caching=$caching")
         if (startMs > 0) options += ":start-time=${startMs / 1000.0}"
         listener?.onBufferingChanged(true)
         player.media().play(url, *options.toTypedArray())
