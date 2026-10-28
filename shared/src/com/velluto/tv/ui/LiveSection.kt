@@ -1,5 +1,8 @@
 package com.velluto.tv.ui
 
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
@@ -87,12 +90,17 @@ fun LiveSection(vm: AppViewModel, catalog: Catalog) {
     var query by remember { mutableStateOf(vm.lastFocus["live-query"] ?: "") }
     val q = query.trim()
     val searching = q.length >= 2
-    val results = remember(catalog, q) {
-        if (q.length < 2) emptyList() else catalog.live.filter { it.name.contains(q, ignoreCase = true) }
+    // Si cerca solo quando smetti di scrivere e fuori dal thread dell'interfaccia: con migliaia di
+    // canali filtrare a ogni lettera rallentava la tastiera sulle Firestick lente. null = sto cercando.
+    val results by produceState<List<LiveChannel>?>(null, catalog, q) {
+        value = null
+        if (q.length < 2) return@produceState
+        delay(250)
+        value = withContext(Dispatchers.Default) { catalog.live.filter { it.name.contains(q, ignoreCase = true) } }
     }
     val showingTop = !searching && selectedCat == TOP_ID
     val channels = when {
-        searching -> results
+        searching -> results.orEmpty()
         showingTop -> topChannels
         else -> catalog.liveByCategory[selectedCat].orEmpty()
     }
@@ -174,7 +182,13 @@ fun LiveSection(vm: AppViewModel, catalog: Catalog) {
             )
             if (searching) {
                 Text(
-                    if (results.isEmpty()) "Nessun canale trovato per \"$q\"" else "${results.size} canali trovati",
+                    results.let { r ->
+                        when {
+                            r == null -> "Cerco…"
+                            r.isEmpty() -> "Nessun canale trovato per \"$q\""
+                            else -> "${r.size} canali trovati"
+                        }
+                    },
                     modifier = Modifier.padding(start = 14.dp, top = 6.dp),
                     color = Palette.TextDim,
                     fontSize = 13.sp,

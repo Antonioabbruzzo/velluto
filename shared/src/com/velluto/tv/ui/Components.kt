@@ -8,12 +8,9 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -299,14 +296,10 @@ fun Hero(
         modifier = modifier.fillMaxWidth(),
         label = "hero",
     ) { (t, extra) ->
-        // Lo sfondo si avvicina lentissimamente: la pagina sembra viva anche da ferma.
-        val drift = rememberInfiniteTransition(label = "heroDrift")
-        val zoom by drift.animateFloat(
-            initialValue = 1f,
-            targetValue = 1.07f,
-            animationSpec = infiniteRepeatable(tween(18_000, easing = LinearEasing), RepeatMode.Reverse),
-            label = "heroZoom",
-        )
+        // Lo sfondo si avvicina lentamente una volta sola e poi si ferma: la pagina sembra viva, ma
+        // senza ridisegnare lo schermo all'infinito (pesava sulle Firestick più lente).
+        val zoom = remember(t) { Animatable(1f) }
+        LaunchedEffect(t) { zoom.animateTo(1.05f, tween(12_000, easing = LinearEasing)) }
         // clipToBounds: lo zoom resta dentro il riquadro, non deborda sul menu o sulle file.
         Box(Modifier.fillMaxSize().clipToBounds()) {
             if (t != null) {
@@ -317,8 +310,8 @@ fun Hero(
                     alignment = Alignment.TopCenter,
                     modifier = Modifier.fillMaxSize().graphicsLayer {
                         alpha = 0.8f
-                        scaleX = zoom
-                        scaleY = zoom
+                        scaleX = zoom.value
+                        scaleY = zoom.value
                         transformOrigin = TransformOrigin(0.7f, 0.3f)
                     },
                 )
