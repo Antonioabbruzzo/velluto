@@ -110,14 +110,23 @@ private val TOP_LIST: List<Pair<String, List<List<String>>>> = listOf(
     ),
 )
 
+// Espressioni compilate una volta sola: con migliaia di canali ricompilarle per ognuno bloccava le Firestick più lente.
+private val COUNTRY_PREFIX = Regex("""^\s*[\[(|]?\s*(it|ita|italia)\s*[\])|:\-]+\s*""")
+private val BRACKETS = Regex("""[|\[\]()]""")
+private val SPACES = Regex("""\s+""")
+private val Q_FHD = Regex("""\bfhd\b|ꜰʜᴅ""")
+private val Q_HD = Regex("""\bhd\b|ᴴᴰ""")
+private val Q_SAT = Regex("""\bsat\b""")
+private val Q_SD = Regex("""\bsd\b""")
+
 private val QUALITY_TOKENS = setOf("hd", "fhd", "uhd", "4k", "sat", "sd", "hevc", "h265", "1080p", "720p", "ᴴᴰ", "ꜰʜᴅ", "⁴ᴷ")
 
 /** Nome del canale senza prefissi di paese, qualità e simboli: "|IT| Rai 1 FHD" → "rai 1". */
 fun normalizeChannelName(name: String): String {
     var s = name.lowercase()
-        .replace(Regex("""^\s*[\[(|]?\s*(it|ita|italia)\s*[\])|:\-]+\s*"""), "")
-        .replace(Regex("""[|\[\]()]"""), " ")
-    s = s.split(Regex("""\s+""")).filter { it.isNotBlank() && it !in QUALITY_TOKENS }.joinToString(" ")
+        .replace(COUNTRY_PREFIX, "")
+        .replace(BRACKETS, " ")
+    s = s.split(SPACES).filter { it.isNotBlank() && it !in QUALITY_TOKENS }.joinToString(" ")
     // "Mediaset Canale 20" → anche "canale 20": il marchio davanti spesso c'è, spesso no.
     return s.removePrefix("mediaset ").trim()
 }
@@ -126,10 +135,10 @@ fun normalizeChannelName(name: String): String {
 private fun qualityScore(name: String): Int {
     val t = name.lowercase()
     return when {
-        Regex("""\bfhd\b|ꜰʜᴅ""").containsMatchIn(t) -> 4
-        Regex("""\bhd\b|ᴴᴰ""").containsMatchIn(t) -> 3
-        Regex("""\bsat\b""").containsMatchIn(t) -> 1
-        Regex("""\bsd\b""").containsMatchIn(t) -> 0
+        Q_FHD.containsMatchIn(t) -> 4
+        Q_HD.containsMatchIn(t) -> 3
+        Q_SAT.containsMatchIn(t) -> 1
+        Q_SD.containsMatchIn(t) -> 0
         else -> 2
     }
 }
@@ -144,10 +153,15 @@ private val SLOW_CATEGORY =Regex("""\bsd\b|lent""", RegexOption.IGNORE_CASE)
  */
 fun buildTopChannels(live: List<LiveChannel>, categoryNames: Map<String, String>): List<TopGroup> {
     val byName = HashMap<String, MutableList<LiveChannel>>()
+    // Le categorie si controllano una volta sola, non per ogni canale.
+    val skippedCategory = HashMap<String, Boolean>()
     for (ch in live) {
+        val skip = skippedCategory.getOrPut(ch.categoryId) {
+            val category = categoryNames[ch.categoryId].orEmpty()
+            SLOW_CATEGORY.containsMatchIn(category) || isAdultCategory(category)
+        }
+        if (skip) continue
         if (TIMESHIFT.containsMatchIn(ch.name) || ULTRA_HD.containsMatchIn(ch.name)) continue
-        val category = categoryNames[ch.categoryId].orEmpty()
-        if (SLOW_CATEGORY.containsMatchIn(category) || isAdultCategory(category)) continue
         byName.getOrPut(normalizeChannelName(ch.name)) { mutableListOf() }.add(ch)
     }
     val used = HashSet<Int>()

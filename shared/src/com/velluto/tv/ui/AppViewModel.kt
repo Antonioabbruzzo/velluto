@@ -177,6 +177,17 @@ class AppViewModel(val platform: PlatformServices) {
 
     @OptIn(FlowPreview::class)
     private fun startBackgroundWork() {
+        // Canali TV: indici e Top canali pronti prima di aprire la sezione (job a parte, così non
+        // aspettano generi e novità, che su un catalogo grande richiedono di più).
+        scope.launch {
+            snapshotFlow { catalog }.filterNotNull().collectLatest { c ->
+                withContext(background) {
+                    c.liveByCategory
+                    c.nonEmptyLiveCategories
+                    c.topChannels
+                }
+            }
+        }
         // Generi e novità: una volta per ogni versione del catalogo.
         scope.launch {
             snapshotFlow { catalog }.filterNotNull().collectLatest { c ->
@@ -187,7 +198,6 @@ class AppViewModel(val platform: PlatformServices) {
                     c.movies.firstOrNull()?.let { c.versionsOf(it) }
                     c.moviesByCategory
                     c.seriesByCategory
-                    c.liveByCategory
                     CatalogDerived(
                         catalog = c,
                         recentSeries = c.newest(c.series, 60) { it.lastModified },

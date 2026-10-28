@@ -55,7 +55,6 @@ import androidx.compose.ui.unit.sp
 import com.velluto.tv.platform.RemoteImage
 import com.velluto.tv.data.Catalog
 import com.velluto.tv.data.Category
-import com.velluto.tv.data.buildTopChannels
 import com.velluto.tv.data.EpgEntry
 import com.velluto.tv.data.LiveChannel
 import kotlinx.coroutines.delay
@@ -70,12 +69,11 @@ private const val TOP_ID = "velluto-top"
 @Composable
 fun LiveSection(vm: AppViewModel, catalog: Catalog) {
     // "★ Top canali": selezione dei canali italiani principali, prima di tutte le categorie del provider.
-    val top = remember(catalog) {
-        buildTopChannels(catalog.live, catalog.liveCategories.associate { it.id to it.name })
-    }
+    // Calcolati in sottofondo appena arriva il catalogo (AppViewModel): qui di solito sono già pronti.
+    val top = catalog.topChannels
     val topChannels = remember(top) { top.flatMap { it.channels } }
     val cats = remember(catalog, top) {
-        val provider = catalog.liveCategories.filter { catalog.liveByCategory[it.id].orEmpty().isNotEmpty() }
+        val provider = catalog.nonEmptyLiveCategories
         if (top.isEmpty()) provider else listOf(Category(TOP_ID, "★  Top canali")) + provider
     }
     if (cats.isEmpty()) {

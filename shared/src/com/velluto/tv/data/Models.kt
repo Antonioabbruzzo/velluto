@@ -107,6 +107,10 @@ data class Catalog(
     val series: List<Series>,
 ) {
     val liveByCategory: Map<String, List<LiveChannel>> by lazy { live.groupBy { it.categoryId } }
+    /** "★ Top canali": calcolati una volta per catalogo, in sottofondo (vedi AppViewModel). */
+    val topChannels: List<TopGroup> by lazy { buildTopChannels(live, liveCategories.associate { it.id to it.name }) }
+    /** Categorie dei canali che hanno almeno un canale. */
+    val nonEmptyLiveCategories: List<Category> by lazy { liveCategories.filter { liveByCategory[it.id].orEmpty().isNotEmpty() } }
     val moviesByCategory: Map<String, List<Movie>> by lazy { movies.groupBy { it.categoryId } }
     val seriesByCategory: Map<String, List<Series>> by lazy { series.groupBy { it.categoryId } }
     private val moviesByKey: Map<String, Movie> by lazy { movies.associateBy { it.key } }
