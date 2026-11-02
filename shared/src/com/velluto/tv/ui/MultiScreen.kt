@@ -223,6 +223,7 @@ private fun SlotPlayer(client: XtreamClient, vm: AppViewModel, channel: LiveChan
     // Audio solo dal riquadro selezionato. Si riapplica anche quando lo stream parte: VLC (PC)
     // riporta il volume al massimo a ogni nuovo stream.
     fun applyVolume() {
+        engine.audioEnabled = isActive
         engine.volume = if (isActive && !vm.playerMuted) vm.playerVolume else 0f
     }
 

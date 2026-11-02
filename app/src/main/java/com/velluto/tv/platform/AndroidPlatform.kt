@@ -62,6 +62,15 @@ class ExoEngine(val player: ExoPlayer) : VideoEngine {
             player.volume = value.coerceIn(0f, 1f)
         }
 
+    override var audioEnabled: Boolean = true
+        set(value) {
+            if (field == value) return
+            field = value
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !value)
+                .build()
+        }
+
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             listener?.onPlayingChanged(isPlaying)
@@ -82,7 +91,13 @@ class ExoEngine(val player: ExoPlayer) : VideoEngine {
     }
 
     override fun load(url: String, startMs: Long) {
-        player.setMediaItem(MediaItem.fromUri(url), startMs)
+        // Velocità fissa: nelle dirette HLS ExoPlayer accelera/rallenta di poco per stare vicino
+        // alla diretta, e l'audio si sente "storto". Meglio qualche secondo di ritardo.
+        val item = MediaItem.Builder()
+            .setUri(url)
+            .setLiveConfiguration(MediaItem.LiveConfiguration.Builder().setMinPlaybackSpeed(1f).setMaxPlaybackSpeed(1f).build())
+            .build()
+        player.setMediaItem(item, startMs)
         player.prepare()
         player.playWhenReady = true
     }
@@ -106,10 +121,10 @@ fun rememberVideoEngine(): VideoEngine {
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(10_000)
             .setReadTimeoutMs(20_000)
-        // Parte appena c'è 1 secondo di video (di default ExoPlayer ne aspetta 2,5: nei canali live,
-        // che arrivano in tempo reale, si sentiva). Buffer massimo più piccolo: meno memoria sulle Firestick.
+        // Parte con 1,5 s di video (ExoPlayer di default ne aspetta 2,5) ma dopo un'interruzione
+        // riparte solo con 4 s di scorta: con meno, nelle dirette l'audio andava a scatti.
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(15_000, 40_000, 1_000, 2_500)
+            .setBufferDurationsMs(20_000, 50_000, 1_500, 4_000)
             .build()
         ExoEngine(
             ExoPlayer.Builder(context)

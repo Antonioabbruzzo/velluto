@@ -261,6 +261,7 @@ class VlcEngine : VideoEngine {
             override fun playing(mediaPlayer: MediaPlayer) = ui {
                 // VLC applica il volume solo con l'audio avviato: lo reimpostiamo a ogni nuovo contenuto.
                 player.audio().setVolume((volume * 100).toInt())
+                player.audio().setMute(!audioEnabled)
                 listener?.onBufferingChanged(false)
                 listener?.onPlayingChanged(true)
             }
@@ -294,10 +295,15 @@ class VlcEngine : VideoEngine {
             if (!released) player.audio().setVolume((field * 100).toInt())
         }
 
+    override var audioEnabled: Boolean = true
+        set(value) {
+            field = value
+            if (!released) player.audio().setMute(!value)
+        }
+
     override fun load(url: String, startMs: Long) {
-        // Canali live: cache più corta, così partono prima (film e serie restano a 1,5 s, più stabili).
-        val caching = if ("/live/" in url) 1000 else 1500
-        val options = mutableListOf(":http-user-agent=${XtreamClient.USER_AGENT}", ":network-caching=$caching")
+        // 1,5 s di cache anche per le dirette: con 1 s VLC rallentava/accelerava l'audio per stare al passo.
+        val options = mutableListOf(":http-user-agent=${XtreamClient.USER_AGENT}", ":network-caching=1500")
         if (startMs > 0) options += ":start-time=${startMs / 1000.0}"
         listener?.onBufferingChanged(true)
         player.media().play(url, *options.toTypedArray())
@@ -347,6 +353,7 @@ private class MissingVlcEngine(private val reason: String) : VideoEngine {
     override val durationMs = 0L
     override val isPlaying = false
     override var volume = 1f
+    override var audioEnabled = true
     override fun load(url: String, startMs: Long) {
         listener?.onBufferingChanged(false)
         listener?.onError("installa VLC 64-bit da videolan.org e riapri Velluto · $reason")

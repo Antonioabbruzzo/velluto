@@ -67,6 +67,12 @@ interface VideoEngine {
     /** Volume del player, da 0 (muto) a 1 (massimo). Sulla Fire TV si somma al volume del televisore. */
     var volume: Float
 
+    /**
+     * Audio acceso o spento del tutto (multiscreen: i riquadri non selezionati non decodificano
+     * l'audio, così non disturbano quello che stai ascoltando).
+     */
+    var audioEnabled: Boolean
+
     fun load(url: String, startMs: Long)
     fun play()
     fun pause()
