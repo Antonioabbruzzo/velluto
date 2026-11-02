@@ -27,10 +27,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,15 +59,13 @@ import com.velluto.tv.platform.RemoteImage
 import com.velluto.tv.platform.VideoEngine
 import com.velluto.tv.platform.VideoSurface
 import com.velluto.tv.platform.rememberVideoEngine
+import kotlinx.coroutines.delay
 
 /**
- * Quanti canali si possono guardare insieme: il massimo del dispositivo (2 sulla Firestick,
- * 4 sul PC), ma mai più delle connessioni permesse dall'abbonamento (ogni riquadro ne usa una).
+ * Quanti canali si possono guardare insieme: 2 sulla Firestick, 4 sul PC. Ogni riquadro usa una
+ * connessione del provider: se l'abbonamento non ne ha abbastanza, quel riquadro resta "non disponibile".
  */
-fun AppViewModel.multiScreenSlots(): Int {
-    val connections = accountInfo?.maxConnections?.trim()?.toIntOrNull()?.takeIf { it > 0 } ?: platform.maxMultiScreens
-    return minOf(platform.maxMultiScreens, connections)
-}
+fun AppViewModel.multiScreenSlots(): Int = platform.maxMultiScreens
 
 /**
  * Multiscreen: 2 o 4 canali live insieme. Si sente l'audio solo del riquadro selezionato.
@@ -174,8 +174,8 @@ fun MultiScreen(vm: AppViewModel, channels: List<LiveChannel>, startIndex: Int) 
             )
         }
     }
-    LaunchedEffect(picking) { if (!picking) runCatching { fr.requestFocus() } }
-    RequestFocus(fr, Unit)
+    // Focus: all'elenco canali quando è aperto (ci pensa ChannelPicker), altrimenti ai riquadri.
+    if (!picking) RequestFocus(fr, "multi-grid")
 }
 
 @Composable
@@ -203,7 +203,8 @@ private fun MultiSlot(
                 color = Palette.TextDim, fontSize = 14.sp, textAlign = TextAlign.Center,
             )
         } else {
-            SlotPlayer(client, vm, channel, active)
+            // Un player nuovo per ogni canale del riquadro: niente stato del canale precedente.
+            key(channel.id) { SlotPlayer(client, vm, channel, active) }
         }
     }
 }
@@ -215,11 +216,23 @@ private fun SlotPlayer(client: XtreamClient, vm: AppViewModel, channel: LiveChan
     var failed by remember { mutableStateOf(false) }
     var ext by remember { mutableStateOf(vm.liveExt) }
     var fallbackTried by remember { mutableStateOf(false) }
+    // Tentativi dopo un errore: entrando nel multiscreen il provider può tenere occupata per qualche
+    // secondo la connessione del canale appena chiuso.
+    var retry by remember { mutableIntStateOf(0) }
+    val isActive by rememberUpdatedState(active)
+    // Audio solo dal riquadro selezionato. Si riapplica anche quando lo stream parte: VLC (PC)
+    // riporta il volume al massimo a ogni nuovo stream.
+    fun applyVolume() {
+        engine.volume = if (isActive && !vm.playerMuted) vm.playerVolume else 0f
+    }
 
     DisposableEffect(engine) {
         engine.listener = object : VideoEngine.Listener {
             override fun onPlayingChanged(playing: Boolean) {
-                if (playing) started = true
+                if (playing) {
+                    started = true
+                    applyVolume()
+                }
             }
             override fun onBufferingChanged(isBuffering: Boolean) = Unit
             override fun onEnded() = Unit
@@ -237,18 +250,20 @@ private fun SlotPlayer(client: XtreamClient, vm: AppViewModel, channel: LiveChan
             engine.release()
         }
     }
-    // Cambio canale nel riquadro: si riparte dal formato che funziona col provider.
-    LaunchedEffect(channel.id) {
-        ext = vm.liveExt
-        fallbackTried = false
+    LaunchedEffect(failed) {
+        if (failed && retry < 2) {
+            delay(3_000)
+            retry++
+        }
     }
-    LaunchedEffect(channel.id, ext) {
+    LaunchedEffect(ext, retry) {
         started = false
         failed = false
+        if (retry > 0) fallbackTried = true // nei nuovi tentativi niente cambio di formato: era la connessione
+        applyVolume()
         engine.load(client.liveUrl(channel.id, ext), 0L)
     }
-    // Audio solo dal riquadro selezionato.
-    LaunchedEffect(active) { engine.volume = if (active && !vm.playerMuted) vm.playerVolume else 0f }
+    LaunchedEffect(active) { applyVolume() }
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         VideoSurface(engine, Modifier.fillMaxSize())

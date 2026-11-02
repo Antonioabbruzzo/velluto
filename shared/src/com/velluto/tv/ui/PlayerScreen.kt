@@ -250,6 +250,9 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
             override fun onPlayingChanged(playing: Boolean) {
                 isPlaying = playing
                 if (playing) started = true
+                // Il formato si ricorda solo quando il canale parte davvero: un errore dovuto al
+                // provider (es. connessione ancora occupata) non deve far passare tutto a HLS, più lento.
+                if (playing && req is PlayRequest.Live) vm.liveExt = liveExt
                 // In pausa o in background salva subito. Subito dopo un cambio di episodio/canale
                 // il player può ancora riportare la posizione del contenuto precedente: in quel caso no.
                 if (!playing && System.currentTimeMillis() - loadedAt > 3_000) saveProgress()
@@ -277,10 +280,9 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
             override fun onError(message: String) {
                 if (req is PlayRequest.Live && !liveFallbackTried) {
                     // Alcuni provider accettano solo HLS (o solo TS): si prova l'altro formato e, se va,
-                    // dal canale successivo si parte direttamente da quello, senza riaspettare l'errore.
+                    // se parte, dal canale successivo si usa direttamente quello, senza riaspettare l'errore.
                     liveFallbackTried = true
                     liveExt = if (liveExt == "ts") "m3u8" else "ts"
-                    vm.liveExt = liveExt
                     return
                 }
                 errorText = "Impossibile riprodurre ($message)"
@@ -365,8 +367,7 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
         if (r is PlayRequest.Live) {
             add(PlayerControl("⏮", "Canale prec.", r.channels.size > 1, PlayerIcon.PREV) { zap(-1) })
             add(PlayerControl("⏭", "Canale succ.", r.channels.size > 1, PlayerIcon.NEXT) { zap(+1) })
-            // Multiscreen: serve almeno una seconda connessione nell'abbonamento.
-            add(PlayerControl("▦", "Multiscreen", vm.multiScreenSlots() >= 2, PlayerIcon.MULTI) {
+            add(PlayerControl("▦", "Multiscreen", true, PlayerIcon.MULTI) {
                 vm.back()
                 vm.navigate(MultiLive(r.channels, r.index))
             })
