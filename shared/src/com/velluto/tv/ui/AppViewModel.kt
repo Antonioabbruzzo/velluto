@@ -70,6 +70,7 @@ data class TitleExtra(val plot: String, val year: String, val genre: String, val
 
 /** Il catalogo si riscarica al massimo una volta al giorno (o a mano da Impostazioni). */
 private const val REFRESH_EVERY_MS = 24L * 60 * 60 * 1000
+private const val UPDATE_CHECK_EVERY_MS = 6L * 60 * 60 * 1000
 
 /** Dati ricavati dal catalogo che richiedono di scorrere decine di migliaia di titoli. */
 data class CatalogDerived(
@@ -226,7 +227,13 @@ class AppViewModel(val platform: PlatformServices) {
     init {
         startBackgroundWork()
         if (account != null) loadCatalog()
-        checkForUpdate()
+        // Aggiornamenti: all'avvio e poi ogni 6 ore, per chi lascia l'app sempre aperta.
+        scope.launch {
+            while (true) {
+                checkForUpdate()
+                delay(UPDATE_CHECK_EVERY_MS)
+            }
+        }
     }
 
     fun login(url: String, user: String, pass: String, onError: (String) -> Unit) {
@@ -379,8 +386,65 @@ class AppViewModel(val platform: PlatformServices) {
 
     fun checkForUpdate(onResult: ((Boolean) -> Unit)? = null) {
         scope.launch {
-            update = runCatching { platform.updater.check() }.getOrNull()
-            onResult?.invoke(update != null)
+            val found = runCatching { platform.updater.check() }.getOrNull()
+            update = found
+            onResult?.invoke(found != null)
+            if (found != null) prepareUpdate(found)
+        }
+    }
+
+    /** File della nuova versione già scaricato e pronto da installare (null finché non c'è). */
+    var updateFile by mutableStateOf<java.io.File?>(null)
+        private set
+    /** Avanzamento del download in sottofondo (0..1), null quando non si sta scaricando. */
+    var updateProgress by mutableStateOf<Float?>(null)
+        private set
+    var updateError by mutableStateOf<String?>(null)
+        private set
+    /** Firestick: l'avviso "Aggiornamento pronto" è stato chiuso con "Più tardi" (si ripropone al prossimo avvio). */
+    var updatePromptDismissed by mutableStateOf(false)
+    /** PC: l'aggiornamento si installa da solo alla chiusura, senza chiedere niente. */
+    val updatePlatformSilent: Boolean get() = platform.updater.installsOnExit
+    private var updateFileCode = 0
+    private var updateJob: Job? = null
+
+    /** Scarica la nuova versione in sottofondo; sul PC si installerà da sola alla chiusura dell'app. */
+    private fun prepareUpdate(info: UpdateInfo) {
+        if (updateFile != null && updateFileCode == info.versionCode) return
+        if (updateJob?.isActive == true) return
+        updateJob = scope.launch {
+            updateError = null
+            updateProgress = 0f
+            try {
+                // Solo a ogni punto percentuale in più: niente ridisegni inutili durante il download.
+                val file = platform.updater.download(info) { p ->
+                    val pct = (p * 100).toInt() / 100f
+                    if (pct != updateProgress) updateProgress = pct
+                }
+                updateFile = file
+                updateFileCode = info.versionCode
+                if (platform.updater.installsOnExit) platform.updater.installOnExit(file)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                updateError = "Download non riuscito: ${e.message}"
+            } finally {
+                updateProgress = null
+            }
+        }
+    }
+
+    /** "Installa": usa il file già scaricato, oppure lo scarica adesso. */
+    fun installUpdate() {
+        val info = update ?: return
+        scope.launch {
+            if (updateFile == null || updateFileCode != info.versionCode) {
+                prepareUpdate(info)
+                updateJob?.join()
+            }
+            val file = updateFile ?: return@launch
+            runCatching { platform.updater.install(file) }
+                .onFailure { updateError = "Installazione non riuscita: ${it.message}" }
         }
     }
 

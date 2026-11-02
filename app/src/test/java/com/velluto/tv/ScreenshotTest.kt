@@ -65,6 +65,8 @@ import com.velluto.tv.data.Series
 import com.velluto.tv.data.SeriesDetail
 import com.velluto.tv.ui.WithSideMenu
 import com.velluto.tv.ui.AppViewModel
+import com.velluto.tv.platform.UpdateInfo
+import com.velluto.tv.platform.Updater
 import com.velluto.tv.ui.HomeScreen
 import com.velluto.tv.ui.LoginScreen
 import com.velluto.tv.ui.MovieDetailScreen
@@ -109,7 +111,8 @@ class ScreenshotTest {
                 .dispatcher(Dispatchers.Unconfined)
                 .build()
         )
-        vm = AppViewModel(androidServices(app))
+        // Niente rete negli screenshot: nessun aggiornamento da cercare o scaricare.
+        vm = AppViewModel(androidServices(app, updater = NoUpdates))
         vm.catalog = Fake.catalog
         vm.account = Account("http://mio-provider.example:8080", "mario.rossi", "password")
         vm.accountInfo = AccountInfo(System.currentTimeMillis() + 200L * 24 * 3600 * 1000, "2", "Active")
@@ -763,4 +766,10 @@ private object Fake {
         if (current.isNotEmpty()) lines += current
         return lines
     }
+}
+
+private object NoUpdates : Updater {
+    override suspend fun check(): UpdateInfo? = null
+    override suspend fun download(info: UpdateInfo, onProgress: (Float) -> Unit): java.io.File = error("offline")
+    override fun install(file: java.io.File) = Unit
 }

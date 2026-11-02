@@ -16,7 +16,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -24,16 +23,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 @Composable
 fun SettingsSection(vm: AppViewModel) {
-    val scope = rememberCoroutineScope()
     var updateStatus by remember { mutableStateOf<String?>(null) }
-    var downloading by remember { mutableStateOf(false) }
     val firstFr = remember { FocusRequester() }
     val lib = vm.library.state.value
 
@@ -46,27 +42,26 @@ fun SettingsSection(vm: AppViewModel) {
         Spacer(Modifier.height(10.dp))
         val upd = vm.update
         if (upd != null) {
+            val progress = vm.updateProgress
             TvButton(
-                text = if (downloading) updateStatus ?: "Download…" else "Installa ${upd.versionName}",
+                text = when {
+                    progress != null -> "Download ${(progress * 100).toInt()}%"
+                    vm.updatePlatformSilent -> "Installa ${upd.versionName} e riavvia"
+                    else -> "Installa ${upd.versionName}"
+                },
                 icon = Icons.Filled.Refresh,
                 primary = true,
                 focusRequester = firstFr,
-                onClick = {
-                    if (downloading) return@TvButton
-                    downloading = true
-                    scope.launch {
-                        try {
-                            vm.platform.updater.install(upd) { p ->
-                                updateStatus = "Download ${(p * 100).toInt()}%"
-                            }
-                            updateStatus = null
-                        } catch (e: Exception) {
-                            updateStatus = "Errore: ${e.message}"
-                        } finally {
-                            downloading = false
-                        }
-                    }
+                onClick = { if (progress == null) vm.installUpdate() },
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                vm.updateError ?: when {
+                    vm.updateFile == null -> "La nuova versione si sta scaricando in sottofondo."
+                    vm.updatePlatformSilent -> "Pronta: si installa da sola quando chiudi Velluto."
+                    else -> "Pronta: premi Installa, poi conferma con «Installa» di Android."
                 },
+                color = Palette.TextDim, fontSize = 13.sp,
             )
         } else {
             TvButton(

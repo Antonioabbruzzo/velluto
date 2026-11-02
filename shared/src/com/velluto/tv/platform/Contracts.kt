@@ -31,8 +31,17 @@ interface Updater {
     /** La nuova versione per questa piattaforma, o null se sei già aggiornato. */
     suspend fun check(): UpdateInfo?
 
-    /** Scarica la nuova versione e avvia l'installazione. */
-    suspend fun install(info: UpdateInfo, onProgress: (Float) -> Unit)
+    /** Scarica la nuova versione in sottofondo e restituisce il file pronto da installare. */
+    suspend fun download(info: UpdateInfo, onProgress: (Float) -> Unit): File
+
+    /** Installa subito il file scaricato (Firestick: apre l'installer di Android; PC: installa e riapre Velluto). */
+    fun install(file: File)
+
+    /** True se la piattaforma installa da sola, in silenzio, quando chiudi l'app (PC). */
+    val installsOnExit: Boolean get() = false
+
+    /** Prepara l'installazione silenziosa alla chiusura dell'app (solo dove [installsOnExit]). */
+    fun installOnExit(file: File) {}
 }
 
 class PlatformServices(

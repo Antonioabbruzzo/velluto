@@ -16,6 +16,7 @@ import coil.memory.MemoryCache
 import com.velluto.tv.platform.AndroidAccountStore
 import com.velluto.tv.platform.AndroidUpdater
 import com.velluto.tv.platform.PlatformServices
+import com.velluto.tv.platform.Updater
 import com.velluto.tv.ui.AppRoot
 import com.velluto.tv.ui.AppViewModel
 import com.velluto.tv.ui.Palette
@@ -30,9 +31,9 @@ class AppHolder(app: Application) : AndroidViewModel(app) {
     }
 }
 
-fun androidServices(app: Application) = PlatformServices(
+fun androidServices(app: Application, updater: Updater = AndroidUpdater(app)) = PlatformServices(
     accountStore = AndroidAccountStore(app),
-    updater = AndroidUpdater(app),
+    updater = updater,
     dataDir = app.filesDir,
     versionName = BuildConfig.VERSION_NAME,
 )

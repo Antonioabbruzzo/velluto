@@ -89,20 +89,61 @@ class DesktopAccountStore(dir: File) : AccountStore {
     }
 }
 
-/** Aggiornamenti per Windows: scarica il nuovo .msi da GitHub Releases e lo avvia. */
+/**
+ * Aggiornamenti per Windows: il nuovo .msi si scarica in sottofondo e si installa in silenzio
+ * quando chiudi Velluto (l'app è installata per utente, quindi non servono permessi da amministratore).
+ */
 class DesktopUpdater : Updater {
+    @Volatile private var pendingMsi: File? = null
+    private var hookInstalled = false
+
     override suspend fun check(): UpdateInfo? =
         Releases.latest(BuildInfo.UPDATE_REPO, ".msi", BuildInfo.VERSION_CODE)
 
-    override suspend fun install(info: UpdateInfo, onProgress: (Float) -> Unit) {
-        val msi = Releases.download(
-            info.downloadUrl,
-            File(System.getProperty("java.io.tmpdir"), "Velluto-update.msi"),
-            onProgress,
-        )
-        ProcessBuilder("msiexec", "/i", msi.absolutePath).start()
-        // L'installer deve poter sostituire i file dell'app: chiudiamo Velluto.
+    override suspend fun download(info: UpdateInfo, onProgress: (Float) -> Unit): File {
+        val dir = File(System.getProperty("java.io.tmpdir"), "Velluto-update").apply { mkdirs() }
+        dir.listFiles()?.forEach { it.delete() }
+        val part = Releases.download(info.downloadUrl, File(dir, "Velluto-${info.versionCode}.part"), onProgress)
+        val msi = File(dir, "Velluto-${info.versionCode}.msi")
+        part.renameTo(msi)
+        return msi
+    }
+
+    override val installsOnExit: Boolean get() = true
+
+    @Synchronized
+    override fun installOnExit(file: File) {
+        pendingMsi = file
+        if (hookInstalled) return
+        hookInstalled = true
+        Runtime.getRuntime().addShutdownHook(Thread { pendingMsi?.let { startSilentInstall(it, relaunch = false) } })
+    }
+
+    /** "Installa ora": installa in silenzio e riapre Velluto già aggiornato. */
+    override fun install(file: File) {
+        pendingMsi = null
+        startSilentInstall(file, relaunch = true)
         exitProcess(0)
+    }
+
+    /**
+     * L'installer parte in un processo separato che aspetta la chiusura di Velluto (i file dell'app
+     * devono essere liberi), installa senza finestre e, se richiesto, riapre l'app.
+     */
+    private fun startSilentInstall(msi: File, relaunch: Boolean) {
+        fun q(s: String) = "'" + s.replace("'", "''") + "'"
+        val pid = ProcessHandle.current().pid()
+        val exe = System.getProperty("jpackage.app-path").orEmpty()
+        val script = buildString {
+            append("try { Wait-Process -Id $pid -Timeout 60 -ErrorAction Stop } catch {}; ")
+            append("Start-Process msiexec -ArgumentList ${q("/i \"${msi.absolutePath}\" /qn /norestart")} -Wait; ")
+            append("Remove-Item -LiteralPath ${q(msi.absolutePath)} -ErrorAction SilentlyContinue; ")
+            if (relaunch && exe.isNotBlank()) append("Start-Process -FilePath ${q(exe)}")
+        }
+        runCatching {
+            ProcessBuilder("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-Command", script)
+                .start()
+        }
     }
 }
 

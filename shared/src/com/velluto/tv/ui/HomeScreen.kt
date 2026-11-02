@@ -828,8 +828,14 @@ private fun UpdateBanner(vm: AppViewModel, modifier: Modifier) {
             .background(Palette.Accent)
             .padding(horizontal = 14.dp, vertical = 8.dp),
     ) {
+        val progress = vm.updateProgress
         Text(
-            "Nuova versione disponibile (${upd.versionName}) · vai su Impostazioni",
+            when {
+                progress != null -> "Scarico ${upd.versionName}… ${(progress * 100).toInt()}%"
+                vm.updateFile != null && vm.updatePlatformSilent -> "${upd.versionName} pronta · si installa quando chiudi Velluto"
+                vm.updateFile != null -> "${upd.versionName} pronta · installala da Impostazioni"
+                else -> "Nuova versione disponibile (${upd.versionName}) · vai su Impostazioni"
+            },
             color = Color.White,
             fontSize = 13.sp,
         )

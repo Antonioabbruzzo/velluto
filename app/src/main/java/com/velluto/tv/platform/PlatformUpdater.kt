@@ -9,22 +9,29 @@ import android.provider.Settings
 import androidx.core.content.FileProvider
 import com.velluto.tv.BuildConfig
 import com.velluto.tv.data.Releases
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.io.File
 
-/** Aggiornamenti della Fire TV: scarica l'APK da GitHub Releases e apre l'installer di Android. */
+/**
+ * Aggiornamenti della Fire TV: l'APK si scarica da GitHub Releases in sottofondo, poi si apre
+ * l'installer di Android. Fire OS non permette a un'app installata fuori dall'Appstore di
+ * aggiornarsi senza conferma: l'ultimo "Installa" lo preme sempre l'utente.
+ */
 class AndroidUpdater(private val context: Context) : Updater {
 
     override suspend fun check(): UpdateInfo? =
         Releases.latest(BuildConfig.UPDATE_REPO, ".apk", BuildConfig.VERSION_CODE)
 
-    override suspend fun install(info: UpdateInfo, onProgress: (Float) -> Unit) {
-        val apk = Releases.download(info.downloadUrl, File(context.cacheDir, "updates/velluto.apk"), onProgress)
-        withContext(Dispatchers.Main) { launchInstaller(apk) }
+    override suspend fun download(info: UpdateInfo, onProgress: (Float) -> Unit): File {
+        val dir = File(context.cacheDir, "updates")
+        // Le versioni scaricate in passato non servono più.
+        dir.listFiles()?.forEach { it.delete() }
+        val part = Releases.download(info.downloadUrl, File(dir, "velluto-${info.versionCode}.part"), onProgress)
+        val apk = File(dir, "velluto-${info.versionCode}.apk")
+        part.renameTo(apk)
+        return apk
     }
 
-    private fun launchInstaller(apk: File) {
+    override fun install(file: File) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
             try {
                 context.startActivity(
@@ -36,7 +43,7 @@ class AndroidUpdater(private val context: Context) : Updater {
                 // Alcune Fire TV non hanno questa schermata: proviamo comunque l'installazione.
             }
         }
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", apk)
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
         val intent = Intent(Intent.ACTION_VIEW)
             .setDataAndType(uri, "application/vnd.android.package-archive")
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)

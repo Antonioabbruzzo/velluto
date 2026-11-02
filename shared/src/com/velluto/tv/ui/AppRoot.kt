@@ -34,6 +34,7 @@ fun AppRoot(vm: AppViewModel) {
             } else {
                 // Menu laterale sempre visibile: Home e schede di serie e film.
                 WithSideMenu(vm, content)
+                UpdatePrompt(vm)
             }
         }
     }
