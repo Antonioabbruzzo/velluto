@@ -26,10 +26,11 @@ fun AppRoot(vm: AppViewModel) {
                         is Screen.SeriesDetail -> SeriesDetailScreen(vm, screen.series)
                         is Screen.MovieDetail -> MovieDetailScreen(vm, screen.movie)
                         is Screen.Player -> PlayerScreen(vm, screen.request)
+                        is MultiLive -> MultiScreen(vm, screen.channels, screen.startIndex)
                     }
                 }
             }
-            if (screen is Screen.Player) {
+            if (screen is Screen.Player || screen is MultiLive) {
                 content() // il video resta a tutto schermo
             } else {
                 // Menu laterale sempre visibile: Home e schede di serie e film.

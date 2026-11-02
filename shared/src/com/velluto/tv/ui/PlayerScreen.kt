@@ -365,6 +365,11 @@ fun PlayerScreen(vm: AppViewModel, request: PlayRequest) {
         if (r is PlayRequest.Live) {
             add(PlayerControl("⏮", "Canale prec.", r.channels.size > 1, PlayerIcon.PREV) { zap(-1) })
             add(PlayerControl("⏭", "Canale succ.", r.channels.size > 1, PlayerIcon.NEXT) { zap(+1) })
+            // Multiscreen: serve almeno una seconda connessione nell'abbonamento.
+            add(PlayerControl("▦", "Multiscreen", vm.multiScreenSlots() >= 2, PlayerIcon.MULTI) {
+                vm.back()
+                vm.navigate(MultiLive(r.channels, r.index))
+            })
         } else {
             val episode = r as? PlayRequest.EpisodeReq
             if (episode != null) {

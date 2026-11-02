@@ -52,6 +52,9 @@ class PlatformServices(
 ) {
     /** Attiva/disattiva lo schermo intero della finestra (solo Windows; null sulla Fire TV). */
     var toggleFullscreen: (() -> Unit)? = null
+
+    /** Canali che il dispositivo regge insieme nel multiscreen (2 sulla Firestick, 4 sul PC). */
+    var maxMultiScreens: Int = 2
 }
 
 /** Il player video: ExoPlayer sulla Fire TV, VLC su Windows. */

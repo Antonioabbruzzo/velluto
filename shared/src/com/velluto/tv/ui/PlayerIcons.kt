@@ -21,7 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /** Icone del player, disegnate a mano: identiche su Fire TV e Windows (niente simboli dei font). */
-enum class PlayerIcon { PLAY, PAUSE, PREV, NEXT, BACK10, FWD10, VOLUME, MUTED, MINUS, PLUS, FULLSCREEN, BACK }
+enum class PlayerIcon { PLAY, PAUSE, PREV, NEXT, BACK10, FWD10, VOLUME, MUTED, MINUS, PLUS, FULLSCREEN, BACK, MULTI }
 
 @Composable
 fun PlayerIconView(icon: PlayerIcon, color: Color, size: Dp = 24.dp) {
@@ -105,6 +105,12 @@ private fun DrawScope.drawPlayerIcon(icon: PlayerIcon, color: Color) {
             line(0.64f, 0.16f, 0.84f, 0.16f); line(0.84f, 0.16f, 0.84f, 0.36f)
             line(0.84f, 0.64f, 0.84f, 0.84f); line(0.84f, 0.84f, 0.64f, 0.84f)
             line(0.36f, 0.84f, 0.16f, 0.84f); line(0.16f, 0.84f, 0.16f, 0.64f)
+        }
+        PlayerIcon.MULTI -> {
+            // Quattro riquadri
+            line(0.16f, 0.2f, 0.84f, 0.2f); line(0.16f, 0.8f, 0.84f, 0.8f)
+            line(0.16f, 0.2f, 0.16f, 0.8f); line(0.84f, 0.2f, 0.84f, 0.8f)
+            line(0.5f, 0.2f, 0.5f, 0.8f); line(0.16f, 0.5f, 0.84f, 0.5f)
         }
         PlayerIcon.BACK -> {
             line(0.2f, 0.5f, 0.82f, 0.5f)

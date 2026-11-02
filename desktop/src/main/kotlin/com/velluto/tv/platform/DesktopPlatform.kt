@@ -58,7 +58,7 @@ fun desktopServices(): PlatformServices {
         updater = DesktopUpdater(),
         dataDir = dir,
         versionName = BuildInfo.VERSION_NAME,
-    )
+    ).apply { maxMultiScreens = 4 }
 }
 
 /** Credenziali salvate in %APPDATA%\Velluto\account.json (solo su questo PC). */

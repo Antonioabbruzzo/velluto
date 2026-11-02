@@ -59,6 +59,7 @@ import com.velluto.tv.platform.LocalBackDispatcher
 import com.velluto.tv.platform.desktopServices
 import com.velluto.tv.ui.AppRoot
 import com.velluto.tv.ui.AppViewModel
+import com.velluto.tv.ui.MultiLive
 import com.velluto.tv.ui.Palette
 import com.velluto.tv.ui.Screen
 import com.velluto.tv.ui.VellutoTheme
@@ -83,7 +84,7 @@ fun main() = application {
 
     // Film, serie e canali partono a schermo intero; uscendo dal player si torna com'eri.
     // Se nel frattempo lo schermo intero l'hai tolto o messo tu, si rispetta la tua scelta.
-    val inPlayer = vm.backStack.lastOrNull() is Screen.Player
+    val inPlayer = vm.backStack.lastOrNull().let { it is Screen.Player || it is MultiLive }
     LaunchedEffect(inPlayer) {
         if (inPlayer) mode.enterAutoFullscreen() else mode.leaveAutoFullscreen()
     }

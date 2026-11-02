@@ -342,7 +342,7 @@ fun ListEntry(
 }
 
 @Composable
-private fun ChannelEntry(channel: LiveChannel, onFocused: () -> Unit, onClick: () -> Unit) {
+internal fun ChannelEntry(channel: LiveChannel, onFocused: () -> Unit, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val isFocused = interaction.isHighlighted()
     LaunchedEffect(isFocused) { if (isFocused) onFocused() }

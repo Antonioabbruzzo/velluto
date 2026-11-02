@@ -57,6 +57,11 @@ sealed interface Screen {
     }
 }
 
+/** Multiscreen: più canali live insieme, a partire dal canale [startIndex] dell'elenco. */
+data class MultiLive(val channels: List<LiveChannel>, val startIndex: Int, val n: Long = System.nanoTime()) : Screen {
+    override val stateKey = "multi-$n"
+}
+
 sealed interface PlayRequest {
     data class Live(val channels: List<LiveChannel>, val index: Int) : PlayRequest
     data class MovieReq(val movie: Movie, val ext: String, val startMs: Long) : PlayRequest
